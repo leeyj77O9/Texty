@@ -1,97 +1,52 @@
 ﻿namespace Texty;
 
-public class Config
+public record Config
 {
-    public string Input { get; set; }
-    public int Width { get; set; }
-    public int Height { get; set; }
-    public double Ratio { get; set; }
-    public bool Invert { get; set; }
-    public int Depth { get; set; }
-    public string CharSet { get; set; }
-    public int Fps { get; set; }
-    public string? Output { get; set; }
-    public bool Loop { get; set; }
-    public double Speed { get; set; }
-    public bool NoClear { get; set; }
-    public bool Color { get; set; }
-    public bool Background { get; set; }
-    public int FontSize { get; set; }
-    public string FontName { get; set; }
-    public bool CopyToClipboard { get; set; }
+    public string Input { get; init; } = string.Empty;
+    public int Width { get; init; } = 100;
+    public double Ratio { get; init; } = 0.45;
 
-    public bool IsUrl { get; set; }
-    public string Extension { get; set; }
-    public bool IsImage { get; set; }
-    public bool IsVideo { get; set; }
+    public int Height { get; init; }
+    public bool Invert { get; init; }
+    public int Depth { get; init; } = 10;
+    public string CharSet { get; init; } = " .'`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+    public int Fps { get; init; } = 30;
+    public string? Output { get; init; }
+    public bool Loop { get; init; }
+    public double Speed { get; init; } = 1.0;
+    public bool NoClear { get; init; }
+    public bool Color { get; init; }
+    public int FontSize { get; init; } = 12;
+    public string FontName { get; init; } = "Consolas";
+    public bool CopyToClipboard { get; init; }
 
-    private HashSet<string> imageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".jfif", ".webp"];
-    private HashSet<string> videoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
+    public bool IsUrl => Uri.IsWellFormedUriString(Input, UriKind.Absolute);
+    public string Extension => IsUrl
+        ? Path.GetExtension(new Uri(Input).AbsolutePath).ToLowerInvariant()
+        : Path.GetExtension(Input).ToLowerInvariant();
 
-    public Config(Config otherConfig) : this(
-        otherConfig.Input, otherConfig.Width, otherConfig.Ratio, otherConfig.Invert, otherConfig.Depth,
-        otherConfig.CharSet, otherConfig.Fps, otherConfig.Output, otherConfig.Loop, otherConfig.Speed,
-        otherConfig.NoClear, otherConfig.Color, otherConfig.Background, otherConfig.FontSize,
-        otherConfig.FontName, otherConfig.CopyToClipboard)
+    public bool IsImage => ImageExtensions.Contains(Extension);
+    public bool IsVideo => VideoExtensions.Contains(Extension);
+
+    public int Crf { get; init; } = 26;
+    public string Preset { get; init; } = "veryfast";
+    public string Codec { get; init; } = "libx264";
+    public string? Quality { get; init; }
+
+    public string? StartTime { get; init; } 
+    public string? Duration { get; init; } 
+    public string? EndTime { get; init; } 
+
+    private static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".jfif", ".webp"];
+    private static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
+
+    public Config() { } 
+
+    public void Validate()
     {
-        Height = otherConfig.Height;
-    }
-
-    public Config(string input, int width, double ratio, bool invert, int depth, string charSet, int fps,
-        string? output, bool loop, double speed, bool noClear, bool color, bool background, int fontSize,
-        string fontName, bool copyToClipboard)
-    {
-        if (string.IsNullOrWhiteSpace(input))
-            throw new ArgumentException("Input is required");
-
-        if (width <= 0)
-            throw new ArgumentException("Width must be > 0");
-
-        if (ratio <= 0)
-            throw new ArgumentException("Ratio must be > 0");
-
-        if (depth <= 0)
-            throw new ArgumentException("Depth must be > 0");
-
-        if (string.IsNullOrWhiteSpace(charSet) || charSet.Length < 2)
-            throw new ArgumentException("Charset must have at least 2 characters");
-
-        if (fontSize <= 0)
-            throw new ArgumentException("FontSize must be > 0");
-
-        Input = input;
-        Width = width;
-        Ratio = ratio;
-
-        Invert = invert;
-        Depth = depth;
-        CharSet = charSet;
-        Fps = fps <= 0 ? 1 : fps;
-        FontSize = fontSize;
-        FontName = string.IsNullOrWhiteSpace(fontName) ? "Consolas" : fontName;
-        CopyToClipboard = copyToClipboard;
-
-        Output = string.IsNullOrWhiteSpace(output) ? null : output;
-
-        IsUrl = Uri.IsWellFormedUriString(input, UriKind.Absolute);
-
-        Extension = IsUrl
-            ? Path.GetExtension(new Uri(input).AbsolutePath)
-            : Path.GetExtension(input);
-
-        var ext = Extension.ToLowerInvariant() ?? "";
-
-        IsImage = imageExtensions.Contains(ext);
-        IsVideo = videoExtensions.Contains(ext);
-
-        Loop = loop;
-        Speed = speed <= 0 ? 1.0 : speed;
-        NoClear = noClear;
-        Color = color;
-        Background = background;
-
-        if (!IsImage && !IsVideo)
-            throw new ArgumentException($"Unsupported file type: {ext}");
+        if (string.IsNullOrWhiteSpace(Input)) throw new ArgumentException("Input is required");
+        if (Width <= 0) throw new ArgumentException("Width must be > 0");
+        if (!IsImage && !IsVideo) throw new ArgumentException($"Unsupported file type: {Extension}");
     }
 
     public static Config FromArgs(string[] args)
@@ -111,11 +66,17 @@ public class Config
         var speed = 1.0;
         var noClear = false;
         var color = false;
-        var background = false;
         var fontSize = 12;
         var fontName = "Consolas";
         var copyToClipboard = false;
+        var crf = 26;
+        var preset = "veryfast";
+        var codec = "libx264";
+        string? quality = null;
         string? output = null;
+        string? startTime = null;
+        string? duration = null;
+        string? endTime = null;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -182,11 +143,7 @@ public class Config
                     color = true;
                     break;
 
-                case "--bg":
-                    background = true;
-                    break;
-
-                case "--font-size": 
+                case "--font-size":
                 case "-fs":
                     if (!int.TryParse(NextValue(), out fontSize))
                         throw new ArgumentException($"Invalid font size: {args[i]}");
@@ -202,14 +159,64 @@ public class Config
                     copyToClipboard = true;
                     break;
 
+                case "--crf":
+                    if (!int.TryParse(NextValue(), out crf))
+                        throw new ArgumentException($"Invalid crf: {args[i]}");
+                    break;
+
+                case "--preset":
+                    preset = NextValue();
+                    break;
+
+                case "--codec":
+                    codec = NextValue();
+                    break;
+
+                case "--quality":
+                case "-q":
+                    quality = NextValue().ToLowerInvariant();
+                    break;
+
+                case "--start":
+                case "-ss":
+                    startTime = NextValue();
+                    break;
+
+                case "--duration":
+                case "-t":
+                    duration = NextValue();
+                    break;
+
+                case "--to":
+                    endTime = NextValue();
+                    break;
+
                 default:
                     throw new ArgumentException($"Unknown argument: {arg}");
             }
         }
 
-        return new Config(
-            input, width, ratio, invert, depth, charSet, fps, output, loop, speed, noClear,
-            color, background, fontSize, fontName, copyToClipboard
-        );
+        var config = new Config
+        {
+            Input = input, Width = width, Ratio = ratio,
+            Invert = invert, Depth = depth, CharSet = charSet,
+            Fps = fps, Output = output, Loop = loop, Speed = speed, NoClear = noClear,
+            Color = color, FontSize = fontSize, FontName = fontName, CopyToClipboard = copyToClipboard,
+            Crf = crf, Preset = preset, Codec = codec, Quality = quality,
+            StartTime = startTime, Duration = duration, EndTime = endTime,
+        };
+
+        return ApplyQualitySettings(config);
+    }
+
+    private static Config ApplyQualitySettings(Config config)
+    {
+        return config.Quality switch
+        {
+            "fast" => config with { Codec = "libx264", Crf = 26, Preset = "veryfast" },
+            "balanced" => config with { Codec = "libx264", Crf = 28, Preset = "faster" },
+            "small" => config with { Codec = "libx265", Crf = 28, Preset = "fast" },
+            _ => config
+        };
     }
 }

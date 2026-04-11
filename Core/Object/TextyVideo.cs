@@ -1,12 +1,13 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
 
 namespace Texty;
 
 public class TextyVideo : TextyObject
 {
-    private readonly IAsyncEnumerable<Image<Rgba32>> images;
+    private readonly IAsyncEnumerable<Image<Rgb24>> images;
     private readonly Config config;
 
     public override Config Config => config;
@@ -14,10 +15,9 @@ public class TextyVideo : TextyObject
     public TextyVideo(Config config)
     {
         var (width, height) = TextyLoader.GetResolution(config);           
-        this.config = config;
-        this.config.Height = (int)(height * ((float)config.Width / width));
+        this.config = config with { Height = (int)(height * ((float)config.Width / width)) };
 
-        images = TextyLoader.ExtractFramesAsync(config);
+        images = TextyLoader.ExtractFramesAsync(this.config);
     }
 
     public override async IAsyncEnumerable<string> TextyAsync()
@@ -55,10 +55,32 @@ public class TextyVideo : TextyObject
                     using (frame)
                     {
                         var textyImageObj = new TextyImage(frame, config);
-                        using var renderedImage = (config.Color ? textyImageObj.RenderANSI() : textyImageObj.Render());
+                        using var renderedImage = config.Color ? textyImageObj.RenderANSI() : textyImageObj.Render();
+                        renderedImage.Mutate(x => x.Resize(new ResizeOptions
+                        {
+                            Size = new Size(width, height),
+                            Mode = ResizeMode.Stretch,
+                            Sampler = KnownResamplers.NearestNeighbor
+                        }));
 
-                        renderedImage.SaveAsPng(stdin);
-                        stdin.Flush();
+                        renderedImage.ProcessPixelRows(accessor =>
+                        {
+                            for (int y = 0; y < accessor.Height; y++)
+                            {
+                                var row = accessor.GetRowSpan(y);
+                                var buffer = new byte[accessor.Width * 3];
+                                for (int x = 0; x < accessor.Width; x++)
+                                {
+                                    var pixel = row[x];
+                                    buffer[x * 3] = pixel.R;
+                                    buffer[x * 3 + 1] = pixel.G;
+                                    buffer[x * 3 + 2] = pixel.B;
+                                }
+
+                                stdin.Write(buffer, 0, buffer.Length);
+                            }
+                            stdin.Flush();
+                        });
                     }
                 }
             }
@@ -78,7 +100,6 @@ public class TextyVideo : TextyObject
             process.Kill();
             Console.WriteLine($"Error during saving video: {ex.Message}");
         }
-
     }
 
     public override async Task SaveAsync()
@@ -90,61 +111,71 @@ public class TextyVideo : TextyObject
         width = width % 2 == 0 ? width : width - 1;
         height = height % 2 == 0 ? height : height - 1;
 
+        byte[] frameBytes = new byte[width * height * 3];
         using var process = CreateFFmpeg(width, height);
 
         process.Start();
 
         try
         {
-            using (var stdin = process.StandardInput.BaseStream)
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdin = process.StandardInput.BaseStream;
+            await foreach (var frame in images)
             {
-                await foreach (var frame in images)
+                using (frame)
                 {
-                    using (frame)
+                    var textyImageObj = new TextyImage(frame, config);
+                    using var renderedImage = await (config.Color ? textyImageObj.RenderANSIAsync() : textyImageObj.RenderAsync());
+                    renderedImage.Mutate(x => x.Resize(new ResizeOptions
                     {
-                        var textyImageObj = new TextyImage(frame, config);
-                        using var renderedImage = (await (config.Color ? textyImageObj.RenderANSIAsync() : textyImageObj.RenderAsync()));                     
-    
-                        await renderedImage.SaveAsPngAsync(stdin);
-                        await stdin.FlushAsync();
-                    }
+                        Size = new Size(width, height),
+                        Mode = ResizeMode.Stretch,
+                        Sampler = KnownResamplers.NearestNeighbor
+                    }));
+
+                    renderedImage.CopyPixelDataTo(frameBytes);
+                    await stdin.WriteAsync(frameBytes);
                 }
             }
+
+            await stdin.FlushAsync();
             process.StandardInput.Close();
+
             await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
-            {
-                string error = await process.StandardError.ReadToEndAsync();
-                throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {error}");
-            }
-
-            Console.WriteLine($"Video successfully saved to: {config.Output}");
+                throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {stderrTask.Result}");
+           
         }
         catch (Exception ex)
         {
             process.Kill();
             Console.WriteLine($"Error during saving video: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
         }
     }
 
     private (int width, int height) GetSize() => ((int)(config.Width * config.FontSize * (config.Color ? 1 : 0.54)), (int)(config.Height * config.FontSize * (config.Color ? 1 : 0.54)));
 
-    private Process CreateFFmpeg(int width, int height) => new()
+    private Process CreateFFmpeg(int width, int height)
     {
-        StartInfo = new ProcessStartInfo
+        bool isGif = config.Output?.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ?? false;
+        return new Process
         {
-            FileName = "ffmpeg",
-            Arguments = $"-y -f image2pipe -vcodec png -r {config.Fps} -i - " +
-                        $"-c:v libx264 -crf 0 -preset slow -pix_fmt yuv444p -tune animation -vf \"scale={width}:{height}\" " +
-                        $"\"{config.Output}\"",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        }
-    };
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-y -f rawvideo -pixel_format rgb24 -video_size {width}x{height} -r {config.Fps} -i - " +
+                $"{(isGif ? "-vf \"split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=dither=none\" -f gif " :
+                           $"-c:v {config.Codec} -crf {config.Crf} -preset {config.Preset} -pix_fmt yuv420p ")}" +
+                           $"\"{config.Output}\"",
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+    }
 
     public override void Dispose()
     {

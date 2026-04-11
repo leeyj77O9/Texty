@@ -40,7 +40,11 @@ if (obj == null)
 
 if (config.Output != null)
 {
+    var sw = Stopwatch.StartNew();
     await obj.SaveAsync();
+    sw.Stop();
+
+    Console.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F2}s ");
 }
 else if (config.CopyToClipboard)
 {
@@ -68,6 +72,8 @@ else
         Environment.Exit(0); 
     };
 
+    using var writer = new StreamWriter(Console.OpenStandardOutput());
+
     do
     {
         var frameTime = 1000.0 / config.Fps / config.Speed;
@@ -78,7 +84,8 @@ else
             if (!config.NoClear)
                 Console.SetCursorPosition(0, 0);
 
-            Console.Write(frame);
+            writer.Write(frame);
+            writer.Flush();
 
             sw.Stop();
             var elapsed = sw.Elapsed.TotalMilliseconds;
@@ -96,7 +103,16 @@ else
 bool HandleSpecialArgs(string[] args)
 {
     var argSet = args.ToHashSet(StringComparer.OrdinalIgnoreCase);
-    if (args.Length == 0 || argSet.Contains("--help") || argSet.Contains("-h"))
+
+    if (argSet.Count == 0)
+    {
+        Console.WriteLine("Texty - Character-based Image/Video Renderer");
+        Console.WriteLine("Usage: Texty <input> [options]");
+        Console.WriteLine("\nTry 'Texty --help' for more information.");
+        return true;
+    }
+
+    if (argSet.Contains("--help") || argSet.Contains("-h"))
     {
         ShowHelp();
         return true;
@@ -137,6 +153,20 @@ Video Options:
   --fps <int>            Frames per second (default: 30)
   --loop                 Loop video playback
   --speed <float>        Playback speed (default: 1.0)
+  --start, -ss <time>    Start time (e.g., 00:00:05 or 5)
+  --to <time>            End time (e.g., 00:00:15)
+  --duration, -t <time>  Duration to render (e.g., 10)
+
+Encoding Options:
+  --crf <int>            Quality (lower = better, default: 26)
+  --preset <string>      Encoding speed preset (default: veryfast)
+                         (ultrafast, superfast, veryfast, faster, fast, medium, slow)
+  --codec <string>       Video codec (default: libx264)
+                         (libx264, libx265)
+  --quality, -q <mode>   Preset quality mode (default: balanced)
+                         fast      = fastest encoding, larger file
+                         balanced  = recommended
+                         small     = smallest file (slower)
 
 Output Options:
   --output, -o <path>    Save output to file
@@ -145,17 +175,20 @@ Output Options:
 
 Color Options:
   --color                Enable ANSI color output
-  --bg                   Use background color rendering
 
 Other:
   --help, -h             Show this help
   --version, -v          Show version
 
 Examples:
-  texty image.jpg
-  texty video.mp4 --fps 30 --loop
-  texty video.mp4 --color --speed 2
-  texty input.png -w 200 -o output.txt
+  Texty image.jpg
+  Texty video.mp4 --fps 30 --loop
+  Texty video.mp4 --color --speed 2
+  Texty input.png -w 200 -o output.txt
+
+  Texty video.mp4 --crf 28 --preset fast
+  Texty video.mp4 --codec libx265 --crf 28
+  Texty video.mp4 --crf 26 --preset veryfast -o out.mp4
 """);
 }
 

@@ -1,101 +1,88 @@
-﻿using System.Text;
-using SixLabors.Fonts;
+﻿using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using System.Text;
 
 namespace Texty;
 
 public class TextyImage : TextyObject
 {
-    private readonly Image<Rgba32> image;
+    private readonly Image<Rgb24> image;
     private Config config;
 
     public override Config Config => config;
 
-    public float CharWidth { get; set; }
-    public float CharHeight { get; set; }
+    public int CharWidth { get; set; }
+    public int CharHeight { get; set; }
 
-    public Font Font => SystemFonts.CreateFont(config.FontName, config.FontSize);
+    private Rgb24? Last { get; set; } = null;
+    private readonly Font font;
+    private Rgb24[]? Atlas;
+    private Dictionary<Rune, int>? CharPos;
 
     public TextyImage(Config config)
-    {
-        this.config = config;       
-        image = Image.Load<Rgba32>(TextyLoader.Load(config));      
-        this.config.Height = (int)(image.Height * ((float)config.Width / image.Width));
+    {     
+        this.image = Image.Load<Rgb24>(TextyLoader.Load(config));      
+        this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
+        font = SystemFonts.CreateFont(config.FontName, config.FontSize);
 
-        var options = new TextOptions(Font);
-        var size = TextMeasurer.MeasureSize("M", options);
+        var options = new TextOptions(font);
+        foreach (var c in Config.CharSet)
+        {
+            var rect = TextMeasurer.MeasureBounds(c.ToString(), options);
 
-        CharWidth = size.Width;
-        CharHeight = size.Height;
+            CharWidth = Math.Max(CharWidth, (int)Math.Ceiling(rect.Width));
+            CharHeight = Math.Max(CharHeight, (int)Math.Ceiling(rect.Height));
+        }
+        BuildAtlas();
     }
 
-    public TextyImage(Image<Rgba32> image, Config config)
+    public TextyImage(Image<Rgb24> image, Config config)
     {
         this.image = image;
-        this.config = config;
-        this.config.Height = (int)(image.Height * ((float)config.Width / image.Width));
+        this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
+        font = SystemFonts.CreateFont(config.FontName, config.FontSize);
 
-        var options = new TextOptions(Font);
-        var size = TextMeasurer.MeasureSize("M", options);
+        var options = new TextOptions(font);
+        foreach (var c in Config.CharSet)
+        {
+            var rect = TextMeasurer.MeasureBounds(c.ToString(), options);
 
-        CharWidth = size.Width;
-        CharHeight = size.Height;
+            CharWidth = Math.Max(CharWidth, (int)Math.Ceiling(rect.Width));
+            CharHeight = Math.Max(CharHeight, (int)Math.Ceiling(rect.Height));
+        }
+
+        BuildAtlas();
     }
 
     public override string Texty()
     {
-        var sb = new StringBuilder(config.Height * (config.Width + 1));
-        var (width, height) = (config.Width, config.Height);
-        using var resized = CloneImage(width, height);
+        var (width, height) = GetSize();
+        using var resized = CloneImage(width, height);       
+        var lines = new string[height];
 
-        resized.ProcessPixelRows(accessor =>
+        Parallel.For(0, height, x =>
         {
-            for (int y = 0; y < height; y++)
+            resized.ProcessPixelRows(accessor =>
             {
-                var row = accessor.GetRowSpan(y);
-
-                for (int x = 0; x < width; x++)
+                var row = accessor.GetRowSpan(x);
+                var sb = new StringBuilder(width * (config.Color ? 20 : 1));
+                for (int y = 0; y < width; y++)
                 {
-                    var p = row[x];
-                    char c = GetCharFromPixel(p, config.CharSet);
-
-                    if (config.Color)
-                    {
-                        if (config.Background)
-                        {
-                            sb.Append("\x1b[48;2;")
-                              .Append(p.R).Append(';')
-                              .Append(p.G).Append(';')
-                              .Append(p.B).Append('m')
-                              .Append(' '); 
-                        }
-                        else
-                        {
-                            sb.Append("\x1b[38;2;")
-                              .Append(p.R).Append(';')
-                              .Append(p.G).Append(';')
-                              .Append(p.B).Append('m')
-                              .Append(c);
-                        }
-                    }
-                    else
-                    {
-                        sb.Append(c);
-                    }
+                    var p = row[y];
+                    AddChar(sb, GetCharFromPixel(p), p);
                 }
-
-                sb.Append('\n');
-            }
+                lines[x] = sb.ToString();
+            });
         });
 
+
         if (config.Color)
-            sb.Append("\x1b[0m");
+            lines[^1] += "\x1b[0m";
 
-
-        return sb.ToString();
+        return string.Join('\n', lines);
     }
 
     public override async IAsyncEnumerable<string> TextyAsync()
@@ -103,158 +90,47 @@ public class TextyImage : TextyObject
         yield return Texty();
     }
 
-    public IEnumerable<string> TextyLine()
+
+    public (Rune r, Rgb24 rgb)[] TextyANSI()
     {
-        var sb = new StringBuilder(config.Height * (config.Width + 1));
-        var (width, height) = (config.Width, config.Height);
+        var (width, height) = GetSize();
         using var resized = CloneImage(width, height);
 
-        for (int y = 0; y < config.Height; y++)
+        var result = new (Rune, Rgb24)[width * height];
+
+        Parallel.For(0, height, x =>
         {
-            for (int x = 0; x < config.Width; x++)
+            resized.ProcessPixelRows(accessor =>
             {
-                var p = resized[x, y];
-                char c = GetCharFromPixel(p, config.CharSet);
+                var row = accessor.GetRowSpan(x);
+                int start = x * width;
 
-                if (config.Color)
+                for (int y = 0; y < width; y++)
                 {
-                    if (config.Background)
-                    {
-                        sb.Append("\x1b[48;2;")
-                          .Append(p.R).Append(';')
-                          .Append(p.G).Append(';')
-                          .Append(p.B).Append('m')
-                          .Append(' ');
-                    }
-                    else
-                    {
-                        sb.Append("\x1b[38;2;")
-                          .Append(p.R).Append(';')
-                          .Append(p.G).Append(';')
-                          .Append(p.B).Append('m')
-                          .Append(c);
-                    }
-                }
-                else
-                {
-                    sb.Append(c);
-                }
-            }
+                    var p = row[y];
+                    var c = GetCharFromPixel(p);
 
-            sb.Append('\n');
-            yield return sb.ToString();
-            sb.Clear();
-        }
+                    result[start + y] = (c, p);
+                }      
+            });
+        });
 
-        if (config.Color)
-            sb.Append("\x1b[0m");
-
-
-        yield return sb.ToString();
+        return result;
     }
 
-    public async IAsyncEnumerable<string> TextyLineAsync()
+    public async IAsyncEnumerable<(Rune r, Rgb24 rgb)[]> TextyANSIAsync()
     {
-        var sb = new StringBuilder(config.Height * (config.Width + 1));
-        var (width, height) = (config.Width, config.Height);
-        using var resized = CloneImage(width, height);
-
-        for (int y = 0; y < config.Height; y++)
-        {
-            for (int x = 0; x < config.Width; x++)
-            {
-                var p = resized[x, y];
-                char c = GetCharFromPixel(p, config.CharSet);
-
-                if (config.Color)
-                {
-                    if (config.Background)
-                    {
-                        sb.Append("\x1b[48;2;")
-                          .Append(p.R).Append(';')
-                          .Append(p.G).Append(';')
-                          .Append(p.B).Append('m')
-                          .Append(' ');
-                    }
-                    else
-                    {
-                        sb.Append("\x1b[38;2;")
-                          .Append(p.R).Append(';')
-                          .Append(p.G).Append(';')
-                          .Append(p.B).Append('m')
-                          .Append(c);
-                    }
-                }
-                else
-                {
-                    sb.Append(c);
-                }
-            }
-
-            sb.Append('\n');
-            yield return sb.ToString();
-            sb.Clear();
-        }
-
-        if (config.Color)
-            sb.Append("\x1b[0m");
-
-
-        yield return sb.ToString();
+        yield return TextyANSI();
     }
 
-    public IEnumerable<(char c, byte r, byte g, byte b, bool bg)> TextyANSI()
-    {
-        var (width, height) = (config.Width, config.Height);
-        using var resized = CloneImage(width, height);
 
-        for (int y = 0; y < config.Height; y++)
-        {
-            for (int x = 0; x < config.Width; x++)
-            {
-                var p = resized[x, y];
-                char c = GetCharFromPixel(p, config.CharSet);
-
-                if (config.Background)
-                    yield return (' ', p.R, p.G, p.B, true);
-                else
-                    yield return (c, p.R, p.G, p.B, false);
-
-            }
-
-            yield return ('\n', 0, 0, 0, false);
-        }        
-    }
-
-    public async IAsyncEnumerable<(char c, byte r, byte g, byte b, bool bg)> TextyANSIAsync()
-    {
-        var (width, height) = (config.Width, config.Height);
-        using var resized = CloneImage(width, height);
-
-        for (int y = 0; y < config.Height; y++)
-        {
-            for (int x = 0; x < config.Width; x++)
-            {
-                var p = resized[x, y];
-                char c = GetCharFromPixel(p, config.CharSet);
-
-                if (config.Background)
-                    yield return (' ', p.R, p.G, p.B, true);
-                else
-                    yield return (c, p.R, p.G, p.B, false);
-
-            }
-
-            yield return ('\n', 0, 0, 0, false);
-        }
-    }
 
     public override void Save()
     {
         if (string.IsNullOrEmpty(config.Output))
             throw new ArgumentException("Output path is required. Please specify --output <path>");
 
-        var image = Render();
+        var image = config.Color ? RenderANSI() : Render();
 
         try
         {
@@ -285,217 +161,201 @@ public class TextyImage : TextyObject
         }
     }
 
-    public Image<Rgba32> Render()
+
+
+    public Image<Rgb24> Render()
     {
         var beforeConfig = config;
-        config = new Config(beforeConfig) { Color = false };
+        config = beforeConfig with { Color = false };
 
         try
         {
-            var (width, height) = GetSize();
-            var image = new Image<Rgba32>(width, height, Color.White);
+            var (width, height) = GetRenderSize();
+            var image = new Image<Rgb24>(width, height, Color.White);
+            var lines = Texty().Split('\n');
 
-            image.Mutate(ctx =>
+            image.ProcessPixelRows(ctx =>
             {
-                int y = 0;
-                foreach (var line in TextyLine())
+                int y = 0, lenRow = CharWidth * config.CharSet.Length;
+
+                foreach (var line in lines)
                 {
-                    ctx.DrawText(line, Font, Color.Black, new PointF(0, y * config.FontSize * CharHeight));
+                    int x = 0;
+
+                    foreach (var c in line)
+                    {
+                        var r = new Rune(c);
+                        if (CharPos.TryGetValue(r, out var pos))
+                        {
+                            int destX = x * CharWidth;
+                            int destY = y * CharHeight;
+
+                            for (int row = 0; row < CharHeight; row++)
+                            {
+                                var srcRow = Atlas.AsSpan(row * lenRow).Slice(pos, CharWidth);
+                                var destRow = ctx.GetRowSpan(destY + row).Slice(destX, CharWidth);
+
+                                srcRow.CopyTo(destRow);
+                            }
+                        }
+                        x++;
+                    }
                     y++;
                 }
+
             });
 
             return image;
         }
         finally
         {
-            config = beforeConfig;  
+            config = beforeConfig;
         }
     }
+    public Task<Image<Rgb24>> RenderAsync() => Task.Run(() => Render());
 
-    public async Task<Image<Rgba32>> RenderAsync()
+
+
+    public Image<Rgb24> RenderANSI()
     {
-        return await Task.Run(() =>
+        var (width, height) = GetRenderSize();
+        var size = GetSize();
+        var image = new Image<Rgb24>(width, height, Color.White);
+        var ansis = TextyANSI();
+
+        Parallel.For(0, size.height, x =>
         {
-            var beforeConfig = config;
-            config = new Config(beforeConfig) { Color = false };
+            int destX = x * CharHeight, lenRow = CharWidth * config.CharSet.Length; ;
 
-            try
+            image.ProcessPixelRows(ctx =>
             {
-                var (width, height) = GetSize();
-                var image = new Image<Rgba32>(width, height, Color.White);
-
-                image.Mutate(ctx =>
+                for (int y = 0; y < size.width; y++)
                 {
-                    int y = 0;
-                    foreach (var line in TextyLine())
+                    var (c, rgb) = ansis[size.width * x + y];
+                    if (!CharPos.TryGetValue(c, out var pos))
+                        continue;
+
+                    int destY = y * CharWidth;
+
+                    for (int row = 0; row < CharHeight; row++)
                     {
-                        ctx.DrawText(line, Font, Color.Black, new PointF(0, y * CharHeight));
-                        y++;
+                        var srcRow = Atlas.AsSpan(row * lenRow).Slice(pos, CharWidth);
+                        var destRow = ctx.GetRowSpan(destX + row).Slice(destY, CharWidth);
+
+                        for (int i = 0; i < CharWidth; i++)
+                            BlurColor(srcRow[i], ref destRow[i], rgb);
                     }
-                });
-
-                return image;
-            }
-            finally
-            {
-                config = beforeConfig;
-            }
-        });
-    }
-
-    public Image<Rgba32> RenderANSI()
-    {
-        var (width, height) = GetSize();
-        var image = new Image<Rgba32>(width, height, Color.White);
-
-        image.Mutate(ctx =>
-        {
-            float x = 0, y = 0;
-
-            var drawingOptions = new DrawingOptions
-            {
-                GraphicsOptions = new GraphicsOptions
-                {
-                    Antialias = false,
-                    AntialiasSubpixelDepth = 0
-                }
-            };
-
-            var sb = new StringBuilder();
-            Rgba32 lastColor = default;
-            PointF startPoint = new(0, 0);
-
-            foreach (var (c, r, g, b, bg) in TextyANSI())
-            {
-                if (c == '\n')
-                {
-                    FlushBuffer(lastColor);
-                    y += CharHeight;
-                    x = 0;
-                    continue;
                 }
 
-                var currentColor = new Rgba32(r, g, b, 255);
-
-                if (sb.Length > 0 && currentColor != lastColor)
-                {
-                    FlushBuffer(lastColor);
-                }
-
-                if (sb.Length == 0)
-                {
-                    startPoint = new PointF(x * CharWidth, y);
-                    lastColor = currentColor;
-                }
-
-                sb.Append(c);
-                x += 1;
-            }
-
-            FlushBuffer(lastColor);
-
-            void FlushBuffer(Rgba32 color)
-            {
-                if (sb.Length > 0)
-                {
-                    ctx.DrawText(drawingOptions, sb.ToString(), Font, color, startPoint);
-                    sb.Clear();
-                }
-            }
-        });
+            });
+        });        
 
         return image;
     }
 
-    public async Task<Image<Rgba32>> RenderANSIAsync()
+    public Task<Image<Rgb24>> RenderANSIAsync() => Task.Run(() => RenderANSI());
+
+
+
+    private Rune GetCharFromPixel(Rgb24 p)
     {
-        return await Task.Run(() =>
+        var chars = config.CharSet;
+        int gray = (p.R * 77 + p.G * 150 + p.B * 29) >> 8;
+        if (config.Invert) gray = 255 - gray;
+
+        int index = (gray * (chars.Length - 1)) >> 8;
+        return new Rune(chars[index]);
+    }
+
+    private void BlurColor(Rgb24 src, ref Rgb24 dst, Rgb24 rgb)
+    {
+        byte intensity = src.R;
+        byte inv = (byte)(255 - intensity);
+
+        dst.R = (byte)((rgb.R * inv + 255 * intensity) >> 8);
+        dst.G = (byte)((rgb.G * inv + 255 * intensity) >> 8);
+        dst.B = (byte)((rgb.B * inv + 255 * intensity) >> 8);
+    }
+
+    private void AddChar(StringBuilder sb, Rune c, Rgb24 p)
+    {
+        if (config.Color)
         {
-            var (width, height) = GetSize();
-            var image = new Image<Rgba32>(width, height, Color.White);
-
-            image.Mutate(ctx =>
+            if (Last.HasValue && Last.Value.Equals(p))
             {
-                float x = 0, y = 0;
+                sb.Append(c);
+            }         
+            else
+            {
+                Last = p;
+                sb.Append('\x1b').Append('[').Append('3').Append('8').Append(';').Append('2').Append(';')
+                  .Append(p.R).Append(';').Append(p.G).Append(';').Append(p.B).Append('m').Append(c);
+            }
+        }
+        else
+        {
+            sb.Append(c);
+        }
+    }
 
-                var drawingOptions = new DrawingOptions
-                {
-                    GraphicsOptions = new GraphicsOptions 
-                    {
-                        Antialias = false,
-                        AntialiasSubpixelDepth = 0 
-                    }
-                };
 
-                var sb = new StringBuilder();
-                Rgba32 lastColor = default;
-                PointF startPoint = new(0, 0);               
 
-                foreach (var (c, r, g, b, bg) in TextyANSI())
-                {
-                    if (c == '\n')
-                    {
-                        FlushBuffer(lastColor);
-                        y += CharHeight;
-                        x = 0;
-                        continue;
-                    }
+    private (int width, int height) GetRenderSize()
+    {
+        var (width, height) = GetSize();
+        return (width * CharWidth, height * CharHeight);
+    }
 
-                    var currentColor = new Rgba32(r, g, b, 255);
+    private (int width, int height) GetSize() => (config.Width, (int)(config.Height * 0.54f));
 
-                    if (sb.Length > 0 && currentColor != lastColor)
-                    {
-                        FlushBuffer(lastColor);
-                    }
 
-                    if (sb.Length == 0)
-                    {
-                        startPoint = new PointF(x * CharWidth, y);
-                        lastColor = currentColor;
-                    }
 
-                    sb.Append(c);
-                    x += 1;
-                }
+    private Image<Rgb24> CloneImage(int width, int height)
+    {
+        if (width == image.Width && height == image.Height)
+            return image.Clone();
 
-                FlushBuffer(lastColor);
+        return image.Clone(ctx => ctx.Resize(new ResizeOptions
+        {
+            Size = new Size(width, height),
+            Mode = ResizeMode.Stretch,
+            Sampler = KnownResamplers.NearestNeighbor,
+        }));
+    }
 
-                void FlushBuffer(Rgba32 color)
-                {
-                    if (sb.Length > 0)
-                    {
-                        ctx.DrawText(drawingOptions, sb.ToString(), Font, color, startPoint);
-                        sb.Clear();
-                    }
-                }
-            });
+    private void BuildAtlas()
+    {
+        var (width, height) = (CharWidth * config.CharSet.Length, CharHeight);
+        Atlas = new Rgb24[width * height];
+        CharPos = [];
 
-            return image;
+        var options = new TextOptions(font);
+        var atlas = new Image<Rgb24>(width, height, Color.White);
+
+        atlas.Mutate(ctx =>
+        {
+            for (int i = 0; i < config.CharSet.Length; i++)
+            {
+                var text = config.CharSet[i].ToString();
+                var rect = TextMeasurer.MeasureBounds(text, options);
+
+                float x = i * CharWidth + (CharWidth - rect.Width) / 2 - rect.Left;
+                float y = (CharHeight - rect.Height) / 2 - rect.Top;
+
+                ctx.DrawText(text, font, Color.Black, new PointF(x, y));
+                CharPos.TryAdd(new Rune(config.CharSet[i]), i * CharWidth);
+            }
         });
 
+        atlas.ProcessPixelRows(ctx =>
+        {
+            for (int i = 0; i < ctx.Height; i++)
+            {
+                var atlasRow = Atlas.AsSpan(i * CharWidth * config.CharSet.Length);
+                ctx.GetRowSpan(i).CopyTo(atlasRow);
+            }
+        });
     }
-
-    private char GetCharFromPixel(Rgba32 p, string chars)
-    {
-        const double rW = 0.299 / 255.0;
-        const double gW = 0.587 / 255.0;
-        const double bW = 0.114 / 255.0;
-
-        double gray = (p.R * rW) + (p.G * gW) + (p.B * bW);
-        if (config.Invert) gray = 1.0 - gray;
-
-        int index = Math.Clamp((int)(gray * (chars.Length - 1)), 0, chars.Length - 1);
-        return chars[index];
-    }
-
-    private (int width, int height) GetSize() => ((int)(config.Width * CharWidth), (int)(config.Height * CharHeight));
-
-    private Image<Rgba32> CloneImage(int width, int height) => image.Clone(ctx => ctx.Resize(new ResizeOptions
-    {
-        Size = new Size(width, height),
-        Sampler = KnownResamplers.NearestNeighbor
-    }));
 
     public override void Dispose()
     {
