@@ -1,12 +1,12 @@
-﻿namespace Texty;
+﻿using Texty.Configuration;
+
+namespace Texty;
 
 public abstract class TextyObject : IDisposable
 {
-    public abstract Config Config { get; }
-
     public abstract string Texty();
 
-    public abstract IAsyncEnumerable<string> TextyAsync();
+    public virtual Task<string> TextyAsync() => Task.Run(() => Texty());
 
     public abstract void Save();
 

@@ -1,7 +1,7 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Buffers;
 using System.Diagnostics;
+using Texty.Configuration;
 
 namespace Texty;
 
@@ -33,11 +33,11 @@ public static class TextyLoader
         }
     }
 
-    public static async IAsyncEnumerable<Image<Rgb24>> ExtractFramesAsync(Config config)
+    public static async IAsyncEnumerable<Image<Rgba32>> ExtractFramesAsync(Config config)
     {
         int width = config.Width;
         int height = config.Height;
-        int frameSize = width * height * 3;
+        int frameSize = width * height * Config.PIXELFORMAT;
         var startTimeArg = !string.IsNullOrEmpty(config.StartTime) ? $"-ss {config.StartTime} " : "";
         var durationArg = !string.IsNullOrEmpty(config.Duration) ? $"-t {config.Duration} " : "";
 
@@ -54,7 +54,7 @@ public static class TextyLoader
                     $"-analyzeduration 0 -probesize 32 " +
                     $"{startTimeArg}-i \"{config.Input}\" {durationArg}" +
                     $"-vf scale={width}:{height}:flags=neighbor,fps={config.Fps} " +
-                    "-vsync 0 -f rawvideo -pix_fmt rgb24 pipe:1",
+                    "-vsync 0 -f rawvideo -pix_fmt rgba pipe:1",
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -69,7 +69,7 @@ public static class TextyLoader
         _ = Task.Run(async () =>
         {
             string? line;
-            while ((line = await process.StandardError.ReadLineAsync()) != null);
+            while ((line = await process.StandardError.ReadLineAsync()) != null) ;
         });
 
         var output = process.StandardOutput.BaseStream;
@@ -92,7 +92,7 @@ public static class TextyLoader
                 if (read < frameSize)
                     break;
 
-                yield return Image.LoadPixelData<Rgb24>(buffer, width, height);
+                yield return Image.LoadPixelData<Rgba32>(buffer, width, height);
             }
         END:;
             if (process.ExitCode != 0)

@@ -1,16 +1,17 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using System.Collections;
 using System.Diagnostics;
+using Texty.Configuration;
+using Texty.Renderer;
 
 namespace Texty;
 
-public class TextyVideo : TextyObject
+public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<string>
 {
-    private readonly IAsyncEnumerable<Image<Rgb24>> images;
+    private readonly IAsyncEnumerable<Image<Rgba32>> images;
     private readonly Config config;
-
-    public override Config Config => config;
 
     public TextyVideo(Config config)
     {
@@ -18,17 +19,6 @@ public class TextyVideo : TextyObject
         this.config = config with { Height = (int)(height * ((float)config.Width / width)) };
 
         images = TextyLoader.ExtractFramesAsync(this.config);
-    }
-
-    public override async IAsyncEnumerable<string> TextyAsync()
-    {
-        await foreach (var image in images)
-        {
-            using (image)
-            {
-                yield return new TextyImage(image, config).Texty();              
-            }
-        }
     }
 
     public override string Texty() => throw new NotSupportedException("Use TextyAsync()");
@@ -42,63 +32,49 @@ public class TextyVideo : TextyObject
         width = width % 2 == 0 ? width : width - 1;
         height = height % 2 == 0 ? height : height - 1;
 
+        IRenderer renderer = IRenderer.Get(config);
+        var ctx = new RenderContext(width, height, config);
+        var frameBytes = new byte[width * height * Config.PIXELFORMAT];
         using var process = CreateFFmpeg(width, height);
 
         process.Start();
 
         try
         {
-            using (var stdin = process.StandardInput.BaseStream)
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            var stdin = process.StandardInput.BaseStream;
+            foreach (var frame in images.ToBlockingEnumerable())
             {
-                foreach (var frame in images.ToBlockingEnumerable())
+                using (frame)
                 {
-                    using (frame)
+                    var textyImageObj = new TextyImage(frame, config);
+                    using var renderedImage = renderer.Render(textyImageObj.TextyAuto(), ctx);
+                    renderedImage.Mutate(x => x.Resize(new ResizeOptions
                     {
-                        var textyImageObj = new TextyImage(frame, config);
-                        using var renderedImage = config.Color ? textyImageObj.RenderANSI() : textyImageObj.Render();
-                        renderedImage.Mutate(x => x.Resize(new ResizeOptions
-                        {
-                            Size = new Size(width, height),
-                            Mode = ResizeMode.Stretch,
-                            Sampler = KnownResamplers.NearestNeighbor
-                        }));
+                        Size = new Size(width, height),
+                        Mode = ResizeMode.Stretch,
+                        Sampler = KnownResamplers.NearestNeighbor
+                    }));
 
-                        renderedImage.ProcessPixelRows(accessor =>
-                        {
-                            for (int y = 0; y < accessor.Height; y++)
-                            {
-                                var row = accessor.GetRowSpan(y);
-                                var buffer = new byte[accessor.Width * 3];
-                                for (int x = 0; x < accessor.Width; x++)
-                                {
-                                    var pixel = row[x];
-                                    buffer[x * 3] = pixel.R;
-                                    buffer[x * 3 + 1] = pixel.G;
-                                    buffer[x * 3 + 2] = pixel.B;
-                                }
-
-                                stdin.Write(buffer, 0, buffer.Length);
-                            }
-                            stdin.Flush();
-                        });
-                    }
+                    renderedImage.CopyPixelDataTo(frameBytes);
+                    stdin.Write(frameBytes);
                 }
             }
+
+            stdin.Flush();
             process.StandardInput.Close();
-            process.WaitForExit();
+
+           process.WaitForExit();
 
             if (process.ExitCode != 0)
-            {
-                string error = process.StandardError.ReadToEnd();
-                throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {error}");
-            }
+                throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {stderrTask.Result}");
 
-            Console.WriteLine($"Video successfully saved to: {config.Output}");
         }
         catch (Exception ex)
         {
             process.Kill();
             Console.WriteLine($"Error during saving video: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
         }
     }
 
@@ -111,7 +87,9 @@ public class TextyVideo : TextyObject
         width = width % 2 == 0 ? width : width - 1;
         height = height % 2 == 0 ? height : height - 1;
 
-        byte[] frameBytes = new byte[width * height * 3];
+        IRenderer renderer = IRenderer.Get(config);
+        var ctx = new RenderContext(width, height, config);
+        var frameBytes = new byte[width * height * Config.PIXELFORMAT];
         using var process = CreateFFmpeg(width, height);
 
         process.Start();
@@ -125,7 +103,7 @@ public class TextyVideo : TextyObject
                 using (frame)
                 {
                     var textyImageObj = new TextyImage(frame, config);
-                    using var renderedImage = await (config.Color ? textyImageObj.RenderANSIAsync() : textyImageObj.RenderAsync());
+                    using var renderedImage = await renderer.RenderAsync(textyImageObj.TextyAuto(), ctx);
                     renderedImage.Mutate(x => x.Resize(new ResizeOptions
                     {
                         Size = new Size(width, height),
@@ -145,7 +123,7 @@ public class TextyVideo : TextyObject
 
             if (process.ExitCode != 0)
                 throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {stderrTask.Result}");
-           
+
         }
         catch (Exception ex)
         {
@@ -155,7 +133,7 @@ public class TextyVideo : TextyObject
         }
     }
 
-    private (int width, int height) GetSize() => ((int)(config.Width * config.FontSize * (config.Color ? 1 : 0.54)), (int)(config.Height * config.FontSize * (config.Color ? 1 : 0.54)));
+    private (int width, int height) GetSize() => ((int)(config.Width * config.FontSize * (config.IsColor ? 1 : 0.54)), (int)(config.Height * config.FontSize * (config.IsColor ? 1 : 0.54)));
 
     private Process CreateFFmpeg(int width, int height)
     {
@@ -165,7 +143,7 @@ public class TextyVideo : TextyObject
             StartInfo = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
-                Arguments = $"-y -f rawvideo -pixel_format rgb24 -video_size {width}x{height} -r {config.Fps} -i - " +
+                Arguments = $"-y -f rawvideo -pixel_format rgba -video_size {width}x{height} -r {config.Fps} -i - " +
                 $"{(isGif ? "-vf \"split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=dither=none\" -f gif " :
                            $"-c:v {config.Codec} -crf {config.Crf} -preset {config.Preset} -pix_fmt yuv420p ")}" +
                            $"\"{config.Output}\"",
@@ -181,4 +159,13 @@ public class TextyVideo : TextyObject
     {
         GC.SuppressFinalize(this);
     }
+
+    public IEnumerator<string> GetEnumerator()
+        => images.ToBlockingEnumerable().Select(img => new TextyImage(img, config).Texty()).GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator()
+        => GetEnumerator();
+
+    public IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default) 
+        => images.Select(img => new TextyImage(img, config).Texty()).GetAsyncEnumerator(cancellationToken);
 }
