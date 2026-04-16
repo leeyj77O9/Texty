@@ -200,7 +200,7 @@ public record Config
 
                 case "--font-style":
                 case "-fst":
-                    if (!Enum.TryParse(NextValue(), out fontStyle))
+                    if (!Enum.TryParse(NextValue(), true, out fontStyle))
                         throw new ArgumentException($"Invalid font-style: {arg}");              
                     break;
 
@@ -224,7 +224,7 @@ public record Config
 
                 case "--quality":
                 case "-q":
-                    if (!Enum.TryParse(NextValue(), out quality))
+                    if (!Enum.TryParse(NextValue(), true, out quality))
                         throw new ArgumentException($"Invalid quality: {arg}");
                     break;
 
@@ -252,6 +252,8 @@ public record Config
                     throw new ArgumentException($"Unknown argument: {arg}");
             }
         }
+
+        width = width % 2 == 0 ? width : width - 1;
 
         var config = new Config
         {

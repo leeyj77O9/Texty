@@ -2,7 +2,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Channels;
 using Texty;
 using Texty.Configuration;
 
@@ -159,55 +158,58 @@ void ShowHelp()
 Texty - Character-based Image/Video Renderer
 
 Usage:
-  texty <input> [options]
+  Texty <input> [options]
 
 Arguments:
-  <input>                    File path or URL
+  <input>                      File path or URL
 
 Rendering Options:
-  --width, -w <int>          Output width (default: 100)
-  --ratio <float>            Height ratio (default: 0.45)
-  --charset <string>         Characters used for rendering
-  --depth <int>              Depth (default: 10)
-  --invert, -i               Invert brightness
+  --width, -w <int>            Output width (default: 100)
+  --ratio <float>              Height ratio (default: 0.45)
+  --charset <string>           Characters used for rendering (default: " .:=*M#@")
+  --depth <int>                Grayscale depth (default: 10)
+  --invert, -i                 Invert brightness
 
-Font Options (for Image/Video output):
-  --font-size, -fs <int>     Font size for rendering (default: 12)
-  --font-name, -fn <str>     Font family name (default: Consolas)
-  --font-color, -fc <string> Select ther background color (default: black)    
+Font Options (Image/Video output):
+  --font-size, -fs <int>       Font size (default: 12)
+  --font-name, -fn <string>    Font family (default: Consolas)
+  --font-color, -fc <string>   Font color (default: black)
+  --font-style, -fst <style>   Font style (default: Regular)
+  --background-color, -bc <string>
+                               Background color (default: white)
 
 Video Options:
-  --fps <int>                Frames per second (default: 30)
-  --loop                     Loop video playback
-  --speed <float>            Playback speed (default: 1.0)
-  --start, -ss <time>        Start time (e.g., 00:00:05 or 5)
-  --to <time>                End time (e.g., 00:00:15)
-  --duration, -t <time>      Duration to render (e.g., 10)
+  --fps <int>                  Frames per second (default: 30)
+  --loop                       Loop playback
+  --speed <float>              Playback speed (default: 1.0)
+  --start, -ss <time>          Start time (e.g. 00:00:05)
+  --to <time>                  End time
+  --duration, -t <time>        Duration
 
 Encoding Options:
-  --crf <int>                Quality (lower = better, default: 26)
-  --preset <string>          Encoding speed preset (default: veryfast)
-                             (ultrafast, superfast, veryfast, faster, fast, medium, slow)
-  --codec <string>           Video codec (default: libx264)
-                             (libx264, libx265)
-  --quality, -q <mode>       Preset quality mode (default: balanced)
-                              fast      = fastest encoding, larger file
-                              balanced  = recommended
-                              small     = smallest file (slower)
+  --crf <int>                  Quality (lower = better, default: 26)
+  --preset <string>            Encoding speed (default: veryfast)
+                               ultrafast, superfast, veryfast, faster,
+                               fast, medium, slow
+  --codec <string>             Video codec (default: libx264)
+                               libx264, libx265
+  --quality, -q <mode>         Preset quality (default: fast)
+                               fast      = fastest, larger file
+                               balanced  = recommended
+                               small     = smallest file
 
 Output Options:
-  --output, -o <path>        Save output to file
-  --no-clear                 Disable console overwrite (print continuously)
-  --copy, -c                 Copy the result (first frame) to clipboard
-  --mode, -m                 Select the rendering mode
+  --output, -o <path>          Save output to file
+  --no-clear                   Disable console clearing
+  --copy, -c                   Copy first frame to clipboard
+  --mode, -m <mode>            Rendering mode
 
 Color Options:
-  --color                    Enable ANSI color output
-  --bg-color <string | int>  Select ther background color (default: white)             
+  --color                      Enable ANSI color output
 
 Other:
-  --help, -h                 Show this help
-  --version, -v              Show version
+  --help, -h                   Show help
+  --version, -v                Show version
 
 Examples:
   Texty image.jpg

@@ -35,8 +35,7 @@ public static class TextyLoader
 
     public static async IAsyncEnumerable<Image<Rgba32>> ExtractFramesAsync(Config config)
     {
-        int width = config.Width;
-        int height = config.Height;
+        var (width, height) = (config.Width, config.Height);
         int frameSize = width * height * Config.PIXELFORMAT;
         var startTimeArg = !string.IsNullOrEmpty(config.StartTime) ? $"-ss {config.StartTime} " : "";
         var durationArg = !string.IsNullOrEmpty(config.Duration) ? $"-t {config.Duration} " : "";
@@ -51,8 +50,7 @@ public static class TextyLoader
             {
                 FileName = "ffmpeg",
                 Arguments =
-                    $"-analyzeduration 0 -probesize 32 " +
-                    $"{startTimeArg}-i \"{config.Input}\" {durationArg}" +
+                    $"{startTimeArg} -i \"{config.Input}\" {durationArg}" +
                     $"-vf scale={width}:{height}:flags=neighbor,fps={config.Fps} " +
                     "-vsync 0 -f rawvideo -pix_fmt rgba pipe:1",
                 RedirectStandardInput = true,
@@ -69,7 +67,10 @@ public static class TextyLoader
         _ = Task.Run(async () =>
         {
             string? line;
-            while ((line = await process.StandardError.ReadLineAsync()) != null) ;
+            while ((line = await process.StandardError.ReadLineAsync()) != null)
+            {
+                
+            }
         });
 
         var output = process.StandardOutput.BaseStream;

@@ -1,6 +1,7 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Texty.Configuration;
 using Texty.Core.Object;
 
@@ -15,32 +16,41 @@ public class DefaultRenderer : IRenderer
         var (renderWidth, renderHeight) = ctx.GetRenderSize();
 
         var image = new Image<Rgba32>(renderWidth, renderHeight, ctx.Config.BgColor);
-        var lenRow = charWidth * ctx.Config.CharSet.Length;
+
+        var cfg = ctx.Config;
+        var atlas = ctx.Atlas;
+        var src = atlas.AsSpan();
+        var lenRow = charWidth * cfg.CharSet.Length;
         uint byteCount = (uint)(charWidth * Config.PIXELFORMAT);
 
         Parallel.For(0, height, x =>
         {
+            var posRow = new int[width];
+            for (var i = 0; i < width; i++)
+            {
+                var (_, _, _, idx) = frame[x * width + i];
+                posRow[i] = atlas.GetPos(idx);
+            }
+
             image.ProcessPixelRows(accessor =>
             {
-                var src = ctx.Atlas.AsSpan();
-                for (var i = 0; i < width; i++)
-                {
-                    var (r, _) = frame[x * width + i];
-                    if (ctx.Atlas.GetPos(r, out var pos))
-                    {
-                        for (int row = 0; row < charHeight; row++)
-                        {
-                            var dest = accessor.GetRowSpan(x * charHeight + row);
+                var src = atlas.AsSpan();
 
-                            Unsafe.CopyBlock(
-                                ref Unsafe.As<Rgba32, byte>(ref dest[i * charWidth]),
-                                ref Unsafe.As<Rgba32, byte>(ref src[row * lenRow + pos]),
-                                byteCount);
+                    for (int row = 0; row < charHeight; row++)
+                    {
+                        var dest = accessor.GetRowSpan(x * charHeight + row);
+
+                        for (var i = 0; i < width; i++)
+                        {
+                            var srcStart = row * lenRow + posRow[i];
+                            var srcSlice = src.Slice(srcStart, charWidth);
+                            var destSlice = dest.Slice(i * charWidth, charWidth);
+                            srcSlice.CopyTo(destSlice);
                         }
                     }
-                }
             });
         });
+
         return image;
     }
 }

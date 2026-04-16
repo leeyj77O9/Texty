@@ -15,7 +15,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
 
     public TextyVideo(Config config)
     {
-        var (width, height) = TextyLoader.GetResolution(config);           
+        var (width, height) = TextyLoader.GetResolution(config);
         this.config = config with { Height = (int)(height * ((float)config.Width / width)) };
 
         images = TextyLoader.ExtractFramesAsync(this.config);
@@ -29,8 +29,8 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
             throw new ArgumentException("Output path is required. Please specify --output <path>");
 
         var (width, height) = GetSize();
-        width = width % 2 == 0 ? width : width - 1;
-        height = height % 2 == 0 ? height : height - 1;
+        width &= ~1;
+        height &= ~1;
 
         IRenderer renderer = IRenderer.Get(config);
         var ctx = new RenderContext(width, height, config);
@@ -64,7 +64,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
             stdin.Flush();
             process.StandardInput.Close();
 
-           process.WaitForExit();
+            process.WaitForExit();
 
             if (process.ExitCode != 0)
                 throw new Exception($"FFmpeg exited with code {process.ExitCode}. Error: {stderrTask.Result}");
@@ -74,7 +74,6 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         {
             process.Kill();
             Console.WriteLine($"Error during saving video: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
         }
     }
 
@@ -84,8 +83,8 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
             throw new ArgumentException("Output path is required. Please specify --output <path>");
 
         var (width, height) = GetSize();
-        width = width % 2 == 0 ? width : width - 1;
-        height = height % 2 == 0 ? height : height - 1;
+        width &= ~1;
+        height &= ~1;
 
         IRenderer renderer = IRenderer.Get(config);
         var ctx = new RenderContext(width, height, config);
@@ -97,7 +96,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         try
         {
             var stderrTask = process.StandardError.ReadToEndAsync();
-            var stdin = process.StandardInput.BaseStream;
+            var stdin = new BufferedStream(process.StandardInput.BaseStream, 1 << 20);
             await foreach (var frame in images)
             {
                 using (frame)
@@ -129,7 +128,6 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         {
             process.Kill();
             Console.WriteLine($"Error during saving video: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
         }
     }
 
@@ -138,12 +136,14 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
     private Process CreateFFmpeg(int width, int height)
     {
         bool isGif = config.Output?.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ?? false;
+
         return new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "ffmpeg",
-                Arguments = $"-y -f rawvideo -pixel_format rgba -video_size {width}x{height} -r {config.Fps} -i - " +
+                Arguments =
+                           $"-y -f rawvideo -pixel_format rgba -video_size {width}x{height} -r {config.Fps} -i - " +
                 $"{(isGif ? "-vf \"split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=dither=none\" -f gif " :
                            $"-c:v {config.Codec} -crf {config.Crf} -preset {config.Preset} -pix_fmt yuv420p ")}" +
                            $"\"{config.Output}\"",
@@ -166,6 +166,6 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
     IEnumerator IEnumerable.GetEnumerator()
         => GetEnumerator();
 
-    public IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default) 
+    public IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default)
         => images.Select(img => new TextyImage(img, config).Texty()).GetAsyncEnumerator(cancellationToken);
 }

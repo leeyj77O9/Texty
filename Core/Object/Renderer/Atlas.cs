@@ -17,11 +17,11 @@ public class Atlas
     public int CharHeight { get; private set; }
     public Font Font { get; private set; }
     public Color FontColor { get; private set; }
+    public Color BgColor { get; private set; }
     public Dictionary<Rune, FontRectangle> CharBounds { get; private set; }
 
     private Rgba32[]? rgbas;
-    private Dictionary<Rune, int>? charPos;
-    private int[]? fastCharPos;
+    private int[]? charPos;
 
     private Atlas()
     {
@@ -35,38 +35,13 @@ public class Atlas
         CharSet = config.CharSet;
         Font = SystemFonts.CreateFont(config.FontName, config.FontSize, config.FontStyle);
         FontColor = config.FontColor;
+        BgColor = config.BgColor;
         CharBounds = [];
 
         Update(config);
     }
 
-    public bool GetPos(char c, out int pos)
-    {
-        if (fastCharPos is null)
-        {
-            pos = -1;
-            return false;
-        }
-        pos = fastCharPos[c];
-        return pos >= 0;
-    }
-
-    public bool GetPos(Rune r, out int pos)
-    {
-        int val = r.Value;
-
-        if (val < 65536 && fastCharPos != null)
-        {
-            pos = fastCharPos[val];
-            return pos >= 0;
-        }
-
-        if (charPos != null && charPos.TryGetValue(r, out pos))
-            return true;
-
-        pos = 0;
-        return false;
-    }
+    public int GetPos(byte idx) => charPos[idx];
 
     public void Update(Config config)
     {        
@@ -96,11 +71,10 @@ public class Atlas
     {
         var (width, height) = (CharWidth * CharSet.Length, CharHeight);
         rgbas = new Rgba32[width * height];
-        fastCharPos = new int[65536];
-        Array.Fill(fastCharPos, -1);
-        charPos = [];
+        charPos = new int[255];
+        Array.Fill(charPos, -1);
 
-        var atlas = new Image<Rgba32>(width, height, Color.White);
+        var atlas = new Image<Rgba32>(width, height, BgColor);
 
         atlas.Mutate(ctx =>
         {
@@ -118,11 +92,7 @@ public class Atlas
 
                 int pos = i * CharWidth;
 
-                if (rune.Value < 65536)
-                    fastCharPos[rune.Value] = pos;
-                else
-                    charPos[rune] = pos;
-                i++;
+                charPos[i++] = pos;
             }
 
         });
@@ -143,13 +113,6 @@ public class Atlas
 
     public Span<Rgba32> AsSpan() => rgbas.AsSpan();
 
-    public Span<Rgba32> AsSpan(int start) => rgbas.AsSpan(start);
-
-    public Span<Rgba32> AsSpan(int start, int length) => rgbas.AsSpan(start, length);
-
     public ReadOnlySpan<Rgba32> AsReadOnly() => rgbas.AsSpan();
 
-    public ReadOnlySpan<Rgba32> AsReadOnly(int start) => rgbas.AsSpan(start);
-
-    public ReadOnlySpan<Rgba32> AsReadOnly(int start, int length) => rgbas.AsSpan(start, length);
 }

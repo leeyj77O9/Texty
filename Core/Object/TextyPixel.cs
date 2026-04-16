@@ -1,22 +1,36 @@
-﻿using SixLabors.ImageSharp.PixelFormats;
-using System.Text;
+﻿
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Texty.Core.Object;
 
 public struct TextyPixel
 {
-    public Rune Rune;
-    public Rgba32 Rgba32;
+    public byte R;
+    public byte G;
+    public byte B;
+    public byte Index;
 
-    public TextyPixel(Rune c, Rgba32 p) : this()
+    public TextyPixel(Rgba32 rgb, byte index) : this()
     {
-        Rune = c;
-        Rgba32 = p;
+        R = rgb.R;
+        G = rgb.G;
+        B = rgb.B;
+        Index = index;
     }
 
-    public readonly void Deconstruct(out Rune c, out Rgba32 rgb)
+    public TextyPixel(byte r, byte g, byte b, byte index) : this()
     {
-        c = Rune;
-        rgb = Rgba32;
+        R = r;
+        G = g;
+        B = b;
+        Index = index;
+    }
+
+    public readonly void Deconstruct(out byte r, out byte g, out byte b, out byte index)
+    {
+        r = R;
+        g = G;
+        b = B;
+        index = Index;
     }
 }

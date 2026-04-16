@@ -10,16 +10,12 @@ namespace Texty;
 
 public class TextyImage : TextyObject
 {
-    private static readonly int[] lutR = [.. Enumerable.Range(0, 256).Select(v => v * 77)];
-    private static readonly int[] lutG = [.. Enumerable.Range(0, 256).Select(v => v * 150)];
-    private static readonly int[] lutB = [.. Enumerable.Range(0, 256).Select(v => v * 29)];
-
     private readonly Image<Rgba32> image;
     private Config config;
 
     public TextyImage(Config config)
-    {     
-        this.image = Image.Load<Rgba32>(TextyLoader.Load(config));      
+    {
+        this.image = Image.Load<Rgba32>(TextyLoader.Load(config));
         this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
     }
 
@@ -37,11 +33,13 @@ public class TextyImage : TextyObject
 
         Parallel.For(0, height, y =>
         {
-            var last = new Rgba32(-1, -1, -1, -1);
+            var last = new Rgba32(0, 0, 0);
             var sb = new StringBuilder(width * (config.IsColor ? 20 : 1));
             for (var x = 0; x < width; x++)
-            {                
-                var (c, p) = pixels[y * width + x];
+            {
+                var (r, g, b, idx) = pixels[y * width + x];
+                var p = new Rgba32(r, g, b);
+                var c = config.Runes[idx];
 
                 if (config.IsColor)
                 {
@@ -76,14 +74,13 @@ public class TextyImage : TextyObject
         var (width, height) = GetSize();
         using var resized = CloneImage(width, height);
         var result = new TextyPixel[width * height];
-        var (first, last) = (config.Runes[0], config.Runes[^1]);
         int threshold = config.Quality switch
         {
             TextyQuality.Small => 60,
             TextyQuality.Balanced => 40,
             TextyQuality.Fast => 25,
             _ => 30
-        };        
+        };
 
         Parallel.For(0, height, y =>
         {
@@ -99,9 +96,9 @@ public class TextyImage : TextyObject
                     var right = x + 1 == width ? row[x - 1] : row[x + 1];
                     var down = next[x];
 
-                    int gray = (lutR[p.R] + lutG[p.G] + lutB[p.B]) >> 8;
-                    int grayR = (lutR[right.R] + lutG[right.G] + lutB[right.B]) >> 8;
-                    int grayD = (lutR[down.R] + lutG[down.G] + lutB[down.B]) >> 8;
+                    int gray = (p.R * 77 + p.G * 150 + p.B * 29) >> 8;
+                    int grayR = (right.R * 77 + right.G * 150 + right.B * 29) >> 8;
+                    int grayD = (down.R * 77 + down.G * 150 + down.B * 29) >> 8;
 
                     int dx = gray - grayR;
                     if (dx < 0) dx = -dx;
@@ -111,7 +108,7 @@ public class TextyImage : TextyObject
 
                     int edge = dx > dy ? dx : dy;
 
-                    result[pos + x] = new(edge < threshold ? last : first, p);
+                    result[pos + x] = new(p.R, p.G, p.B, (byte)(edge < threshold ? config.Runes.Length - 1 : 0));
                 }
 
             });
@@ -136,12 +133,11 @@ public class TextyImage : TextyObject
                 for (int y = 0; y < width; y++)
                 {
                     var p = row[y];
-                    var chars = config.CharSet;
-                    int gray = (lutR[p.R] + lutG[p.G] + lutB[p.B]) >> 8;
-                    int index = (gray * (chars.Length - 1)) >> 8;
-    
-                    result[start + y] = new(config.Runes[index], p);
-                }      
+                    int gray = (p.R * 77 + p.G * 150 + p.B * 29) >> 8;
+                    int index = (gray * (config.CharSet.Length - 1)) >> 8;
+
+                    result[start + y] = new(p, (byte)index);
+                }
             });
         });
 

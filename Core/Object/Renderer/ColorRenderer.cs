@@ -25,14 +25,12 @@ public class ColorRenderer : IRenderer
 
                 for (int y = 0; y < width; y++)
                 {
-                    var (c, rgb) = frame[width * x + y];
-                    if (!ctx.Atlas.GetPos(c, out var pos)) continue;
-
+                    var (r, g, b, idx) = frame[width * x + y];
                     int destY = y * charWidth;
 
                     for (int row = 0; row < charHeight; row++)
                     {
-                        int offset = row * rowWidth + pos;
+                        int offset = row * rowWidth + ctx.Atlas.GetPos(idx);
                         var dest = accessor.GetRowSpan(destX + row);
 
                         for (int i = 0; i < charWidth; i++)
@@ -41,9 +39,9 @@ public class ColorRenderer : IRenderer
                             byte inv = (byte)(255 - intensity);
                             var k = 255 * intensity;
 
-                            dest[destY + i].R = (byte)((rgb.R * inv + k) >> 8);
-                            dest[destY + i].G = (byte)((rgb.G * inv + k) >> 8);
-                            dest[destY + i].B = (byte)((rgb.B * inv + k) >> 8);
+                            dest[destY + i].R = (byte)((r * inv + k) >> 8);
+                            dest[destY + i].G = (byte)((g * inv + k) >> 8);
+                            dest[destY + i].B = (byte)((b * inv + k) >> 8);
                         }      
                     }
                 }
