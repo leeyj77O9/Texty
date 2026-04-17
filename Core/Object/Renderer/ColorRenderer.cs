@@ -30,7 +30,10 @@ public class ColorRenderer : IRenderer
 
                     for (int row = 0; row < charHeight; row++)
                     {
-                        int offset = row * rowWidth + ctx.Atlas.GetPos(idx);
+                        if (!ctx.Atlas.GetPos(idx, out var pos))
+                            continue;
+
+                        int offset = row * rowWidth + pos;
                         var dest = accessor.GetRowSpan(destX + row);
 
                         for (int i = 0; i < charWidth; i++)

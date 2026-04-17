@@ -190,7 +190,7 @@ public class TextyImage : TextyObject
         }
     }
 
-    private (int width, int height) GetSize() => (config.Width, (int)(config.Height * 0.54f));
+    private (int width, int height) GetSize() => (config.Width, (int)(config.Height * Config.CHARRATIO));
 
     private Image<Rgba32> CloneImage(int width, int height)
     {

@@ -1,7 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
 using Texty;
 using Texty.Configuration;
 
@@ -63,7 +62,7 @@ else
         Environment.Exit(0); 
     };
 
-    using var writer = new StreamWriter(Console.OpenStandardOutput(), Encoding.Unicode, 65536)
+    using var writer = new StreamWriter(Console.OpenStandardOutput())
     { 
         AutoFlush = false 
     };
@@ -165,9 +164,7 @@ Arguments:
 
 Rendering Options:
   --width, -w <int>            Output width (default: 100)
-  --ratio <float>              Height ratio (default: 0.45)
   --charset <string>           Characters used for rendering (default: " .:=*M#@")
-  --depth <int>                Grayscale depth (default: 10)
   --invert, -i                 Invert brightness
 
 Font Options (Image/Video output):
@@ -180,10 +177,10 @@ Font Options (Image/Video output):
 
 Video Options:
   --fps <int>                  Frames per second (default: 30)
-  --loop                       Loop playback
+  --loop                       Loop playback (default: false)
   --speed <float>              Playback speed (default: 1.0)
   --start, -ss <time>          Start time (e.g. 00:00:05)
-  --to <time>                  End time
+  --to <time>                  End time 
   --duration, -t <time>        Duration
 
 Encoding Options:
@@ -194,9 +191,9 @@ Encoding Options:
   --codec <string>             Video codec (default: libx264)
                                libx264, libx265
   --quality, -q <mode>         Preset quality (default: fast)
-                               fast      = fastest, larger file
-                               balanced  = recommended
-                               small     = smallest file
+                                fast      = fastest, larger file
+                                balanced  = recommended
+                                small     = smallest file
 
 Output Options:
   --output, -o <path>          Save output to file

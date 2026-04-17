@@ -41,7 +41,17 @@ public class Atlas
         Update(config);
     }
 
-    public int GetPos(byte idx) => charPos[idx];
+    public bool GetPos(byte idx, out int pos)
+    {
+        if (charPos == null)
+        {
+            pos = -1;
+            return false;
+        }
+
+        pos = charPos[idx];
+        return true;
+    }
 
     public void Update(Config config)
     {        

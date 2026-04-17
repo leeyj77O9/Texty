@@ -29,7 +29,10 @@ public class DefaultRenderer : IRenderer
             for (var i = 0; i < width; i++)
             {
                 var (_, _, _, idx) = frame[x * width + i];
-                posRow[i] = atlas.GetPos(idx);
+                if (!ctx.Atlas.GetPos(idx, out var pos))
+                    posRow[i] = 0;
+                else
+                    posRow[i] = pos;
             }
 
             image.ProcessPixelRows(accessor =>

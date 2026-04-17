@@ -1,7 +1,7 @@
 # Texty
 
 <p align="center">
-  <b>Render images and videos as ASCII/ANSI art — directly in your terminal</b>
+  <b>Render images and videos as ASCII / ANSI art — right in your terminal</b>
 </p>
 
 <p align="center">
@@ -12,55 +12,57 @@
 
 ---
 
-## Overview
+## ✨ Features
 
-Texty is a high-performance CLI tool that transforms images and videos into character-based art.
-
-It supports real-time terminal playback and exporting rendered output to video files.
+* ⚡ High-performance pixel-to-character rendering
+* 🎬 Real-time video playback in terminal
+* 🌈 24-bit ANSI color support
+* 🔤 Custom charset & depth control
+* 📦 Export to video using FFmpeg
+* 🖥 Cross-platform (.NET)
 
 ---
 
-## Quick Start
+## 📸 Preview
 
-```
+### GIF (Grayscale)
+<img src="./Core/assets/c.gif" width="400">
+
+### GIF (Color)
+<img src="./Core/assets/a.gif" width="400">
+
+---
+
+## 🚀 Quick Start
+
+```bash
 texty <input> [options]
 ```
 
 ### Examples
 
-```
+```bash
+# Render image
 texty image.jpg
+
+# Play video with color
 texty video.mp4 --color
+
+# Speed up playback
 texty video.mp4 --speed 2
+
+# Export to video file
 texty video.mp4 -o output.mp4
+
+# Custom encoding
 texty video.mp4 --codec libx265 --crf 24
 ```
 
 ---
 
-## Features
+## ⚙️ Installation
 
-- Fast pixel-to-character rendering pipeline
-- Real-time video playback in terminal
-- 24-bit ANSI color support
-- Custom charset and depth control
-- FFmpeg-based video encoding
-- Cross-platform support (.NET)
-
----
-
-## Design Philosophy
-
-- CLI-first
-- Performance-focused
-- Flexible rendering
-- Clean and consistent output
-
----
-
-## Installation
-
-```
+```bash
 git clone https://github.com/leeyj77O9/Texty.git
 cd Texty
 dotnet build -c Release
@@ -68,22 +70,54 @@ dotnet build -c Release
 
 ---
 
-## Command
+## 🧠 Usage
 
-```
+```bash
 texty <input> [options]
 ```
 
----
+### Input
 
-## Notes
-
-- Supports file paths and URLs
-- Works with common image and video formats
-- Requires FFmpeg for video encoding
+* Image files (`.jpg`, `.png`, ...)
+* Video files (`.mp4`, `.webm`, ...)
+* URLs
 
 ---
 
-## Support
+## 🛠 Options
 
-If you find this project useful, consider giving it a star.
+| Option    | Description                 |
+| --------- | --------------------------- |
+| `--color` | Enable ANSI color rendering |
+| `--speed` | Playback speed multiplier   |
+| `-o`      | Output file path            |
+| `--codec` | FFmpeg codec (e.g. libx265) |
+| `--crf`   | Quality (lower = better)    |
+
+---
+
+## 📦 Requirements
+
+* .NET 10 SDK
+* FFmpeg *(required for video export)*
+
+---
+
+## 🎯 Design Philosophy
+
+* **CLI-first** → no UI, just fast terminal workflows
+* **Performance-focused** → optimized rendering pipeline
+* **Flexible** → customizable output
+* **Minimal & consistent** → predictable behavior
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## ⭐ Support
+
+If you find this project useful, consider giving it a star on GitHub!

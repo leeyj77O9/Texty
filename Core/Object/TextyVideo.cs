@@ -131,7 +131,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         }
     }
 
-    private (int width, int height) GetSize() => ((int)(config.Width * config.FontSize * (config.IsColor ? 1 : 0.54)), (int)(config.Height * config.FontSize * (config.IsColor ? 1 : 0.54)));
+    private (int width, int height) GetSize() => (config.Width * config.FontSize, config.Height * config.FontSize);
 
     private Process CreateFFmpeg(int width, int height)
     {

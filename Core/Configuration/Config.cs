@@ -7,14 +7,13 @@ namespace Texty.Configuration;
 public record Config
 {
     public const int PIXELFORMAT = 4;
+    public const double CHARRATIO = 0.54;
 
     public string Input { get; init; } = string.Empty;
     public int Width { get; init; } = 100;
-    public double Ratio { get; init; } = 0.45;
 
     public int Height { get; init; }
     public bool Invert { get; init; }
-    public int Depth { get; init; } = 10;
     public string CharSet { get; init; } = " .:=*M#@";
     public int Fps { get; init; } = 30;
     public Color BgColor { get; init; } = Color.White;
@@ -53,8 +52,8 @@ public record Config
 
     public Rune[] Runes { get; init; }
 
-    private static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".jfif", ".webp"];
-    private static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
+    private static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".jfif", ".webp"];
+    private static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm", ".gif"];
 
     public Config() { } 
 
@@ -73,9 +72,7 @@ public record Config
         string input = args[0];
 
         var width = 100;
-        var ratio = 0.45;
         var invert = false;
-        var depth = 10;
         var charSet = " .:=*M#@";
         var fps = 30;
         var bgColor = Color.White;
@@ -123,19 +120,9 @@ public record Config
                         throw new ArgumentException($"Invalid width: {arg}");
                     break;
 
-                case "--ratio":
-                    if (!double.TryParse(NextValue(), out ratio))
-                        throw new ArgumentException($"Invalid ratio: {arg}");
-                    break;
-
                 case "--invert":
                 case "-i":
                     invert = true;
-                    break;
-
-                case "--depth":
-                    if (!int.TryParse(NextValue(), out depth))
-                        throw new ArgumentException($"Invalid depth: {arg}");
                     break;
 
                 case "--charset":
@@ -259,9 +246,7 @@ public record Config
         {
             Input = input,
             Width = width,
-            Ratio = ratio,
             Invert = invert,
-            Depth = depth,
             CharSet = charSet,
             Fps = fps,
             BgColor = bgColor,
