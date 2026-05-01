@@ -12,12 +12,10 @@ public class Atlas
 {
     public static Atlas Empty => new();
 
-    public string CharSet { get; private set; }
     public int CharWidth { get; private set; }
     public int CharHeight { get; private set; }
     public Font Font { get; private set; }
-    public Color FontColor { get; private set; }
-    public Color BgColor { get; private set; }
+    public Config Config { get; private set; }
     public Dictionary<Rune, FontRectangle> CharBounds { get; private set; }
 
     private Rgba32[]? rgbas;
@@ -25,20 +23,18 @@ public class Atlas
 
     private Atlas()
     {
-        CharSet = "";
         Font = null!;
+        Config = null!;
         CharBounds = null!;
     }
 
     public Atlas(Config config)
     {
-        CharSet = config.CharSet;
         Font = SystemFonts.CreateFont(config.FontName, config.FontSize, config.FontStyle);
-        FontColor = config.FontColor;
-        BgColor = config.BgColor;
         CharBounds = [];
+        Config = config;
 
-        Update(config);
+        Update();
     }
 
     public bool GetPos(byte idx, out int pos)
@@ -53,11 +49,11 @@ public class Atlas
         return true;
     }
 
-    public void Update(Config config)
+    public void Update()
     {        
         var options = new TextOptions(Font);
 
-        foreach (var c in config.CharSet.EnumerateRunes())
+        foreach (var c in Config.Runes)
             CharBounds.TryAdd(c, TextMeasurer.MeasureBounds(c.ToString(), options));
 
         CharWidth = CharBounds.Max(x => (int)Math.Ceiling(x.Value.Width));
@@ -68,7 +64,7 @@ public class Atlas
 
     public bool IsUpdated(Config config)
     {
-        if (config.CharSet != CharSet) return true;
+        if (config.CharSet != Config.CharSet) return true;
         if (config.FontName != Font.Name) return true;
         if (config.FontSize != Font.Size) return true;
 
@@ -79,29 +75,27 @@ public class Atlas
 
     private void BuildAtlas()
     {
-        var (width, height) = (CharWidth * CharSet.Length, CharHeight);
+        var (width, height) = (CharWidth * Config.CharSet.Length, CharHeight);
         rgbas = new Rgba32[width * height];
         charPos = new int[255];
         Array.Fill(charPos, -1);
 
-        var atlas = new Image<Rgba32>(width, height, BgColor);
+        var atlas = new Image<Rgba32>(width, height, Config.BgColor);
 
         atlas.Mutate(ctx =>
         {
             int i = 0; 
-            var runes = CharSet.EnumerateRunes();
 
-            foreach (var rune in runes)
+            foreach (var rune in Config.Runes)
             {
                 var rect = CharBounds[rune];
 
                 var x = i * CharWidth + (CharWidth - rect.Width) / 2 - rect.Left;
                 var y = (CharHeight - rect.Height) / 2 - rect.Top;
 
-                ctx.DrawText(rune.ToString(), Font, FontColor, new PointF(x, y));
+                ctx.DrawText(rune.ToString(), Font, Config.FontColor, new PointF(x, y));
 
                 int pos = i * CharWidth;
-
                 charPos[i++] = pos;
             }
 
@@ -109,7 +103,7 @@ public class Atlas
 
         atlas.ProcessPixelRows(ctx =>
         {
-            int width = CharWidth * CharSet.Length;
+            int width = CharWidth * Config.CharSet.Length;
 
             for (int y = 0; y < height; y++)
             {

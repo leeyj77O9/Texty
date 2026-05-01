@@ -1,22 +1,15 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using Texty;
 using Texty.Configuration;
-
-[DllImport("kernel32.dll", SetLastError = true)]
-static extern IntPtr GetStdHandle(int nStdHandle);
-
-[DllImport("kernel32.dll", SetLastError = true)]
-static extern bool GetConsoleMode(IntPtr hConsoleHandle, out int lpMode);
-
-[DllImport("kernel32.dll", SetLastError = true)]
-static extern bool SetConsoleMode(IntPtr hConsoleHandle, int dwMode);
 
 if (HandleSpecialArgs(args))
     return;
 
 Config config = ParseArgs();
+if (config == null) return;
 
 using var obj = TextyObject.FromConfig(config);
 
@@ -29,82 +22,11 @@ if (obj == null)
 }
 
 if (config.Output != null)
-{
-    var sw = Stopwatch.StartNew();
-    await obj.SaveAsync();
-    sw.Stop();
-
-    Console.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
-}
+    await HandleSave(obj);
 else if (config.CopyToClipboard)
-{
-    var text = obj.Texty();
-    try
-    {
-        TextCopy.ClipboardService.SetText(text);
-        Console.WriteLine("Output copied to clipboard.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Failed to copy to clipboard: {ex.Message}");
-    }
-}
+    HandleCopyToClipboard(obj);
 else
-{
-    Console.CursorVisible = false;
-    Console.CancelKeyPress += (sender, e) =>
-    {
-        e.Cancel = true; 
-
-        obj.Dispose();
-
-        Console.CursorVisible = true;
-        Environment.Exit(0); 
-    };
-
-    using var writer = new StreamWriter(Console.OpenStandardOutput())
-    { 
-        AutoFlush = false 
-    };
-
-    if (obj is TextyImage img)
-    {
-        writer.WriteLine(img.Texty());
-        return;
-    }
-
-    var video = obj as TextyVideo;
-
-    do
-    {
-        var frameTime = 1000d / config.Fps / config.Speed;
-        var start = Stopwatch.GetTimestamp();
-        long frameIndex = 0;
-
-        await foreach (var frame in video!)
-        {
-            if (!config.NoClear)
-                writer.Write("\x1b[H");
-
-            writer.Write(frame);
-
-            frameIndex++;
-
-            var targetTime = frameIndex * frameTime;
-            var elapsed = (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency;
-
-            var delay = targetTime - elapsed;
-
-            if (delay > 1)
-                await Task.Delay((int)delay);
-            else if (delay > 0)
-                Thread.SpinWait(100);
-        }
-
-    } while (config.Loop);
-
-    Console.CursorVisible = true;
-}
+    await HandleRender(obj);
 
 bool HandleSpecialArgs(string[] args)
 {
@@ -131,7 +53,6 @@ bool HandleSpecialArgs(string[] args)
         }
     }
 
-
     return false;
 }
 
@@ -145,8 +66,6 @@ Config ParseArgs()
     {
         Console.WriteLine($"Error: {ex.Message}");
         Console.WriteLine("Use --help for usage.");
-        Environment.Exit(0);
-
         return null!;
     }    
 }
@@ -185,15 +104,15 @@ Video Options:
 
 Encoding Options:
   --crf <int>                  Quality (lower = better, default: 26)
-  --preset <string>            Encoding speed (default: veryfast)
-                               ultrafast, superfast, veryfast, faster,
-                               fast, medium, slow
+  --encode-speed, -es <string> Encoding speed (default: veryfast)
+                                ultrafast, superfast, veryfast, faster,
+                                fast, medium, slow
   --codec <string>             Video codec (default: libx264)
-                               libx264, libx265
+                                libx264, libx265
   --quality, -q <mode>         Preset quality (default: fast)
-                                fast      = fastest, larger file
-                                balanced  = recommended
-                                small     = smallest file
+                                ultrafast, fast, balanced,
+                                high, veryHigh, lossless,
+                                small, verysmall, max
 
 Output Options:
   --output, -o <path>          Save output to file
@@ -209,14 +128,14 @@ Other:
   --version, -v                Show version
 
 Examples:
-  Texty image.jpg
-  Texty video.mp4 --fps 30 --loop
-  Texty video.mp4 --color --speed 2
-  Texty input.png -w 200 -o output.txt
+  texty image.jpg
+  texty video.mp4 --fps 30 --loop
+  texty video.mp4 --color --speed 2
+  texty input.png -w 200 -o output.txt
 
-  Texty video.mp4 --crf 28 --preset fast
-  Texty video.mp4 --codec libx265 --crf 28
-  Texty video.mp4 --crf 26 --preset veryfast -o out.mp4
+  texty video.mp4 --crf 28 --preset fast
+  texty video.mp4 --codec libx265 --crf 28
+  texty video.mp4 --crf 26 --preset veryfast -o out.mp4
 """);
 }
 
@@ -228,6 +147,8 @@ void ShowVersion()
 
 void EnableAnsi()
 {
+    const int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;    
+
     if (!OperatingSystem.IsWindows())
         return;
 
@@ -237,7 +158,7 @@ void EnableAnsi()
 
         if (GetConsoleMode(handle, out int mode))
         {
-            SetConsoleMode(handle, mode | 0x0004);
+            SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
         }
     }
     catch
@@ -245,3 +166,89 @@ void EnableAnsi()
         
     }
 }
+
+async Task HandleSave(TextyObject obj)
+{
+    var sw = Stopwatch.StartNew();
+    await obj.SaveAsync();
+    sw.Stop();
+
+    Console.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
+}
+
+void HandleCopyToClipboard(TextyObject obj)
+{
+    var text = obj.Texty();
+    try
+    {
+        TextCopy.ClipboardService.SetText(text);
+        Console.WriteLine("Output copied to clipboard.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Failed to copy to clipboard: {ex.Message}");
+    }
+}
+
+async Task HandleRender(TextyObject obj)
+{
+    Console.CursorVisible = false;
+    Console.CancelKeyPress += (sender, e) =>
+    {
+        e.Cancel = true;
+
+        obj.Dispose();
+
+        Console.CursorVisible = true;
+    };
+
+    using var writer = new StreamWriter(Console.OpenStandardOutput(), Encoding.UTF8, 1 << 16)
+    {
+        AutoFlush = false
+    };
+
+    if (obj is TextyImage img)
+    {
+        writer.WriteLine(img.Texty());
+        return;
+    }
+
+    if (obj is not TextyVideo video)
+        return;
+
+    do
+    {
+        var frameTime = 1000d / config.Fps / config.Speed;
+        var start = Stopwatch.GetTimestamp();
+        long frameIndex = 0;
+
+        await foreach (var frame in video!)
+        {
+            if (!config.NoClear)
+                writer.Write("\x1b[H");
+
+            writer.Write(frame);
+
+            frameIndex++;
+
+            var targetTime = frameIndex * frameTime;
+            var elapsed = (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency;
+            var delay = targetTime - elapsed;
+
+            if (delay > 2)
+                await Task.Delay((int)delay - 1);
+            else if (delay > 0)
+                Thread.SpinWait(50);
+        }
+
+    } while (config.Loop);
+}
+
+[DllImport("kernel32.dll", SetLastError = true)]
+static extern IntPtr GetStdHandle(int nStdHandle);
+
+[DllImport("kernel32.dll", SetLastError = true)]
+static extern bool GetConsoleMode(IntPtr hConsoleHandle, out int lpMode);
+
+[DllImport("kernel32.dll", SetLastError = true)]
+static extern bool SetConsoleMode(IntPtr hConsoleHandle, int dwMode);

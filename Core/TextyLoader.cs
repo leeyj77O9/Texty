@@ -7,31 +7,13 @@ namespace Texty;
 
 public static class TextyLoader
 {
-    public static async Task<byte[]> LoadAsync(Config config)
-    {
-        if (config.IsUrl)
-        {
-            using var client = new HttpClient();
-            return await client.GetByteArrayAsync(config.Input);
-        }
-        else
-        {
-            return await File.ReadAllBytesAsync(config.Input);
-        }
-    }
+    private static readonly HttpClient _http = new();
 
-    public static byte[] Load(Config config)
-    {
-        if (config.IsUrl)
-        {
-            using var client = new HttpClient();
-            return client.GetByteArrayAsync(config.Input).Result;
-        }
-        else
-        {
-            return File.ReadAllBytes(config.Input);
-        }
-    }
+    public static byte[] Load(Config config) => LoadAsync(config).GetAwaiter().GetResult();
+
+    public static async Task<byte[]> LoadAsync(Config config, CancellationToken ct = default)
+        => await (config.IsUrl ? _http.GetByteArrayAsync(config.Input, ct).ConfigureAwait(false)
+        : File.ReadAllBytesAsync(config.Input, ct).ConfigureAwait(false));
 
     public static async IAsyncEnumerable<Image<Rgba32>> ExtractFramesAsync(Config config)
     {
@@ -61,7 +43,6 @@ public static class TextyLoader
             }
         };
 
-
         process.Start();
 
         _ = Task.Run(async () =>
@@ -84,38 +65,71 @@ public static class TextyLoader
 
                 while (read < frameSize)
                 {
-                    int n = await output.ReadAsync(buffer.AsMemory(read, frameSize - read));
+                    int n = await output.ReadAsync(buffer.AsMemory(read, frameSize - read)).ConfigureAwait(false);
+
                     if (n == 0)
-                        goto END;
+                        break;
+
                     read += n;
                 }
+
+                if (read == 0)
+                    break;
 
                 if (read < frameSize)
                     break;
 
                 yield return Image.LoadPixelData<Rgba32>(buffer, width, height);
             }
-        END:;
+
+            await process.WaitForExitAsync().ConfigureAwait(false);
+
             if (process.ExitCode != 0)
                 throw new Exception("FFmpeg failed");
         }
         finally
         {
-            await process.WaitForExitAsync();
-            process.Dispose();
+            await process.WaitForExitAsync().ConfigureAwait(false);
         }
-        
     }
 
-    public static (int width, int height) GetResolution(Config config)
+    public static async Task<string> DownloadFile(Config config, CancellationToken ct = default)
+    {
+        var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{config.Extension}");
+
+        using var res = await _http.GetAsync(config.Input, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+
+        if (!res.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Failed to download file. Status: {(int)res.StatusCode} {res.ReasonPhrase}");
+        }
+
+        await using var fs = new FileStream(
+            tempPath,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 81920,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        await res.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
+
+        return tempPath;
+    }
+
+    public static (int width, int height, double duration) GetVideoInfo(Config config)
     {
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "ffprobe",
-                Arguments = $"-v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 \"{config.Input}\"",
-                RedirectStandardInput = true,
+                Arguments =
+                    $"-v error -select_streams v:0 " +
+                    $"-show_entries stream=width,height:format=duration " +
+                    $"-of default=noprint_wrappers=1 \"{config.Input}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -125,14 +139,29 @@ public static class TextyLoader
 
         process.Start();
 
-        string result = process.StandardOutput.ReadToEnd();
-
+        string output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
 
-        var parts = result.Trim().Split('x');
-        var width = int.Parse(parts[0]);
-        var height = int.Parse(parts[1]);
+        int width = 0, height = 0;
+        double duration = 0;
 
-        return (width, height);
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("width="))
+                width = int.Parse(line.AsSpan(6));
+
+            else if (line.StartsWith("height="))
+                height = int.Parse(line.AsSpan(7));
+
+            else if (line.StartsWith("duration="))
+                double.TryParse(line.AsSpan(9), out duration);
+        }
+
+        if (width == 0 || height == 0)
+            throw new Exception("Failed to parse resolution");
+
+        return (width, height, duration);
     }
 }

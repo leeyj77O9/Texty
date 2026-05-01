@@ -1,9 +1,8 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using System.Text;
 using Texty.Configuration;
-using Texty.Core.Object;
+using Texty.Mode;
 using Texty.Renderer;
 
 namespace Texty;
@@ -25,10 +24,14 @@ public class TextyImage : TextyObject
         this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
     }
 
-    public override string Texty()
+    public override string Texty() => Texty(TextyModeProvider.Get(config.Mode));
+
+    public string Texty(TextyMode mode) => Texty(TextyModeProvider.Get(mode));
+
+    public string Texty(ITextyMode mode)
     {
-        var (width, height) = GetSize();
-        var pixels = TextyPixel();
+        var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
+        var pixels = mode.Texty(image, config);
         var lines = new string[height];
 
         Parallel.For(0, height, y =>
@@ -41,23 +44,13 @@ public class TextyImage : TextyObject
                 var p = new Rgba32(r, g, b);
                 var c = config.Runes[idx];
 
-                if (config.IsColor)
+                if (config.IsColor && last != p)
                 {
-                    if (last == p)
-                    {
-                        sb.Append(c);
-                    }
-                    else
-                    {
-                        last = p;
-                        sb.Append('\x1b').Append('[').Append('3').Append('8').Append(';').Append('2').Append(';')
-                          .Append(p.R).Append(';').Append(p.G).Append(';').Append(p.B).Append('m').Append(c);
-                    }
+                    last = p;
+                    sb.Append('\x1b').Append('[').Append('3').Append('8').Append(';').Append('2').Append(';')
+                      .Append(p.R).Append(';').Append(p.G).Append(';').Append(p.B).Append('m');
                 }
-                else
-                {
-                    sb.Append(c);
-                }
+                sb.Append(c);
             }
             lines[y] = sb.ToString();
         });
@@ -69,140 +62,39 @@ public class TextyImage : TextyObject
         return string.Join('\n', lines);
     }
 
-    public TextyPixel[] TextyEdge()
-    {
-        var (width, height) = GetSize();
-        using var resized = CloneImage(width, height);
-        var result = new TextyPixel[width * height];
-        int threshold = config.Quality switch
-        {
-            TextyQuality.Small => 60,
-            TextyQuality.Balanced => 40,
-            TextyQuality.Fast => 25,
-            _ => 30
-        };
-
-        Parallel.For(0, height, y =>
-        {
-            int pos = y * width;
-            resized.ProcessPixelRows(accessor =>
-            {
-                var row = accessor.GetRowSpan(y);
-                var next = y + 1 == height ? accessor.GetRowSpan(y - 1) : accessor.GetRowSpan(y + 1);
-
-                for (int x = 0; x < width; x++)
-                {
-                    var p = row[x];
-                    var right = x + 1 == width ? row[x - 1] : row[x + 1];
-                    var down = next[x];
-
-                    int gray = (p.R * 77 + p.G * 150 + p.B * 29) >> 8;
-                    int grayR = (right.R * 77 + right.G * 150 + right.B * 29) >> 8;
-                    int grayD = (down.R * 77 + down.G * 150 + down.B * 29) >> 8;
-
-                    int dx = gray - grayR;
-                    if (dx < 0) dx = -dx;
-
-                    int dy = gray - grayD;
-                    if (dy < 0) dy = -dy;
-
-                    int edge = dx > dy ? dx : dy;
-
-                    result[pos + x] = new(p.R, p.G, p.B, (byte)(edge < threshold ? config.Runes.Length - 1 : 0));
-                }
-
-            });
-        });
-
-        return result;
-    }
-
-    public TextyPixel[] TextyPixel()
-    {
-        var (width, height) = GetSize();
-        using var resized = CloneImage(width, height);
-        var result = new TextyPixel[width * height];
-
-        Parallel.For(0, height, x =>
-        {
-            resized.ProcessPixelRows(accessor =>
-            {
-                var row = accessor.GetRowSpan(x);
-                int start = x * width;
-
-                for (int y = 0; y < width; y++)
-                {
-                    var p = row[y];
-                    int gray = (p.R * 77 + p.G * 150 + p.B * 29) >> 8;
-                    int index = (gray * (config.CharSet.Length - 1)) >> 8;
-
-                    result[start + y] = new(p, (byte)index);
-                }
-            });
-        });
-
-        return result;
-    }
-
-    public TextyPixel[] TextyAuto() => config.Mode switch
-    {
-        TextyMode.Edge => TextyEdge(),
-        _ => TextyPixel(),
-    };
-
-    public override void Save()
-    {
-        if (string.IsNullOrEmpty(config.Output))
-            throw new ArgumentException("Output path is required. Please specify --output <path>");
-
-        var renderer = IRenderer.Get(config);
-        var ctx = new RenderContext(this.image.Width, this.image.Height, config);
-        var image = renderer.Render(TextyAuto(), ctx);
-
-        try
-        {
-            image.Save(config.Output);
-        }
-        catch (UnknownImageFormatException)
-        {
-            Console.WriteLine("Unsupported image format. Saving as PNG instead.");
-            image.SaveAsPng(Path.ChangeExtension(config.Output, ".png"));
-        }
-    }
+    public override void Save() => SaveAsync().GetAwaiter().GetResult();
 
     public override async Task SaveAsync()
     {
         if (string.IsNullOrEmpty(config.Output))
             throw new ArgumentException("Output path is required. Please specify --output <path>");
 
-        var renderer = IRenderer.Get(config);
-        var ctx = new RenderContext(this.image.Width, this.image.Height, config);
-        var image = await renderer.RenderAsync(TextyAuto(), ctx);
+        var mode = TextyModeProvider.Get(config.Mode);
+        var renderer = TextyRendererProvider.Get(config);
+        var ctx = new RenderContext(image.Width, image.Height, config);
+
+        var pixels = await mode.TextyAsync(image, config)
+            .ConfigureAwait(false);
+
+        using var img = await renderer.RenderAsync(pixels, ctx)
+            .ConfigureAwait(false);
 
         try
         {
-            await image.SaveAsync(config.Output);
+            await img.SaveAsync(config.Output)
+                     .ConfigureAwait(false);
         }
         catch (UnknownImageFormatException)
         {
             Console.WriteLine("Unsupported image format. Saving as PNG instead.");
-            await image.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"));
+            await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"))
+                     .ConfigureAwait(false);
         }
-    }
-
-    private (int width, int height) GetSize() => (config.Width, (int)(config.Height * Config.CHARRATIO));
-
-    private Image<Rgba32> CloneImage(int width, int height)
-    {
-        if (width == image.Width && height == image.Height)
-            return image.Clone();
-
-        return image.Clone(ctx => ctx.Resize(new ResizeOptions
+        catch (Exception ex)
         {
-            Size = new Size(width, height),
-            Mode = ResizeMode.Stretch,
-            Sampler = KnownResamplers.NearestNeighbor,
-        }));
+            Console.WriteLine($"Failed to save image: {ex.Message}");
+            throw;
+        }
     }
 
     public override void Dispose()

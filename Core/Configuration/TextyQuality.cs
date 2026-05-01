@@ -2,7 +2,13 @@
 
 public enum TextyQuality
 {
-    Small,
-    Balanced,
+    UltraFast,
     Fast,
+    Balanced,
+    High,
+    VeryHigh,
+    Lossless,
+    Small,
+    VerySmall,
+    Max,
 }

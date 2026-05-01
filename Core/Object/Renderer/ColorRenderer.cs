@@ -4,7 +4,7 @@ using Texty.Core.Object;
 
 namespace Texty.Renderer;
 
-public class ColorRenderer : IRenderer
+public class ColorRenderer : ITextyRenderer
 {
     public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx)
     {

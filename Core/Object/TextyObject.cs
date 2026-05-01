@@ -6,7 +6,7 @@ public abstract class TextyObject : IDisposable
 {
     public abstract string Texty();
 
-    public virtual Task<string> TextyAsync() => Task.Run(() => Texty());
+    public virtual Task<string> TextyAsync(CancellationToken cancellationToken = default) => Task.Run(() => Texty(), cancellationToken);
 
     public abstract void Save();
 

@@ -10,7 +10,7 @@ public record Config
     public const double CHARRATIO = 0.54;
 
     public string Input { get; init; } = string.Empty;
-    public int Width { get; init; } = 100;
+    public int Width { get; init; } = 100;    
 
     public int Height { get; init; }
     public bool Invert { get; init; }
@@ -32,9 +32,7 @@ public record Config
     public bool CopyToClipboard { get; init; }
 
     public bool IsUrl => Uri.IsWellFormedUriString(Input, UriKind.Absolute);
-    public string Extension => IsUrl
-        ? Path.GetExtension(new Uri(Input).AbsolutePath).ToLowerInvariant()
-        : Path.GetExtension(Input).ToLowerInvariant();
+    public string Extension => (IsUrl ? Path.GetExtension(new Uri(Input).AbsolutePath) : Path.GetExtension(Input)).ToLowerInvariant();
 
     public bool IsImage => ImageExtensions.Contains(Extension);
     public bool IsVideo => VideoExtensions.Contains(Extension);
@@ -42,7 +40,7 @@ public record Config
     public TextyMode Mode { get; init; } = TextyMode.Default;
 
     public int Crf { get; init; } = 26;
-    public string Preset { get; init; } = "veryfast";
+    public string EncodeSpeed { get; init; } = "veryfast";
     public string Codec { get; init; } = "libx264";
     public TextyQuality Quality { get; init; } = TextyQuality.Balanced;
 
@@ -92,7 +90,7 @@ public record Config
         var mode = TextyMode.Default;
 
         var crf = 26;
-        var preset = "veryfast";
+        var encodeSpeed = "veryfast";
         var codec = "libx264";
         var quality = TextyQuality.Fast;
 
@@ -201,8 +199,9 @@ public record Config
                         throw new ArgumentException($"Invalid crf: {arg}");
                     break;
 
-                case "--preset":
-                    preset = NextValue();
+                case "--encode-speed":
+                case "-es":
+                    encodeSpeed = NextValue();
                     break;
 
                 case "--codec":
@@ -262,7 +261,7 @@ public record Config
             CopyToClipboard = copyToClipboard,
             Mode = mode,
             Crf = crf,
-            Preset = preset,
+            EncodeSpeed = encodeSpeed,
             Codec = codec,
             Quality = quality,
             StartTime = startTime,
@@ -278,9 +277,69 @@ public record Config
     {
         return config.Quality switch
         {
-            TextyQuality.Fast => config with { Codec = "libx264", Crf = 26, Preset = "veryfast" },
-            TextyQuality.Balanced => config with { Codec = "libx264", Crf = 28, Preset = "faster" },
-            TextyQuality.Small => config with { Codec = "libx265", Crf = 28, Preset = "fast" },
+            TextyQuality.UltraFast => config with
+            {
+                Codec = "libx264",
+                Crf = 32,
+                EncodeSpeed = "ultrafast"
+            },
+
+            TextyQuality.Fast => config with
+            {
+                Codec = "libx264",
+                Crf = 28,
+                EncodeSpeed = "veryfast"
+            },
+
+            TextyQuality.Balanced => config with
+            {
+                Codec = "libx264",
+                Crf = 23,
+                EncodeSpeed = "fast"
+            },
+
+            TextyQuality.High => config with
+            {
+                Codec = "libx265",
+                Crf = 22,
+                EncodeSpeed = "medium"
+            },
+
+            TextyQuality.VeryHigh => config with
+            {
+                Codec = "libx265",
+                Crf = 20,
+                EncodeSpeed = "slow"
+            },
+
+            TextyQuality.Max => config with
+            {
+                Codec = "libx265",
+                Crf = 18,
+                EncodeSpeed = "veryslow"
+            },
+
+            TextyQuality.Lossless => config with
+            {
+                Codec = "libx265",
+                Crf = 0,
+                EncodeSpeed = "veryslow"
+            },
+
+            TextyQuality.Small => config with
+            {
+                Codec = "libx265",
+                Crf = 28,
+                EncodeSpeed = "slow"
+            },
+
+            TextyQuality.VerySmall => config with
+            {
+                Codec = "libx265",
+                Crf = 32,
+                EncodeSpeed = "veryslow"
+            },
+
             _ => config
         };
     }

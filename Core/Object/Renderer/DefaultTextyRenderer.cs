@@ -1,13 +1,11 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Texty.Configuration;
 using Texty.Core.Object;
 
 namespace Texty.Renderer;
 
-public class DefaultRenderer : IRenderer
+public class DefaultTextyRenderer : ITextyRenderer
 {
     public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx)
     {
@@ -29,10 +27,7 @@ public class DefaultRenderer : IRenderer
             for (var i = 0; i < width; i++)
             {
                 var (_, _, _, idx) = frame[x * width + i];
-                if (!ctx.Atlas.GetPos(idx, out var pos))
-                    posRow[i] = 0;
-                else
-                    posRow[i] = pos;
+                posRow[i] = ctx.Atlas.GetPos(idx, out var pos) ? pos : 0;
             }
 
             image.ProcessPixelRows(accessor =>
