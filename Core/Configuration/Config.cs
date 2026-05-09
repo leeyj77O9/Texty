@@ -1,11 +1,14 @@
 ﻿using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using System.Text;
+using Texty.Core.Mode;
 
-namespace Texty.Configuration;
+namespace Texty.Core.Configuration;
 
 public record Config
 {
+    public static readonly Config Default = new();
+
     public const int PIXELFORMAT = 4;
     public const double CHARRATIO = 0.54;
 
@@ -17,6 +20,11 @@ public record Config
     public string CharSet { get; init; } = " .:=*M#@";
     public int Fps { get; init; } = 30;
     public Color BgColor { get; init; } = Color.White;
+
+    public float Blur { get; init; } = 0f;
+    public float Contrast { get; init; } = 1f;
+    public float Brightness { get; init; } = 1f;
+    public float Saturation { get; init; } = 1f;
 
     public string? Output { get; init; }
     public bool Loop { get; init; }
@@ -53,7 +61,7 @@ public record Config
     private static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".jfif", ".webp"];
     private static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm", ".gif"];
 
-    public Config() { } 
+    public Config() { Runes = []; } 
 
     public void Validate()
     {
@@ -69,6 +77,9 @@ public record Config
 
         string input = args[0];
 
+        if (string.IsNullOrWhiteSpace(input) || !File.Exists(input))
+            throw new ArgumentException($"Input file does not exist: {input}");
+
         var width = 100;
         var invert = false;
         var charSet = " .:=*M#@";
@@ -79,6 +90,11 @@ public record Config
         var speed = 1.0;
         var noClear = false;
         var color = false;
+
+        var blur = 0.0f;
+        var contrast = 1.0f;
+        var brightness = 1.0f;
+        var saturation = 1.0f;
 
         var fontSize = 12;
         var fontName = "Consolas";
@@ -189,6 +205,26 @@ public record Config
                         throw new ArgumentException($"Invalid font-style: {arg}");              
                     break;
 
+                case "--blur":
+                    if (!float.TryParse(NextValue(), out blur))
+                        throw new ArgumentException($"Invalid blur: {arg}");
+                    break;
+
+                case "--contrast":
+                    if (!float.TryParse(NextValue(), out contrast))
+                        throw new ArgumentException($"Invalid contrast: {arg}");
+                    break;
+
+                case "--brightness":
+                    if (!float.TryParse(NextValue(), out brightness))
+                        throw new ArgumentException($"Invalid brightness: {arg}");
+                    break;
+
+                case "--saturation":
+                    if (!float.TryParse(NextValue(), out saturation))
+                        throw new ArgumentException($"Invalid saturation: {arg}");
+                    break;
+
                 case "--copy":
                 case "-c":
                     copyToClipboard = true;
@@ -241,6 +277,13 @@ public record Config
 
         width = width % 2 == 0 ? width : width - 1;
 
+        charSet = mode switch
+        { 
+            TextyMode.Block => BlockMode.CharSet,
+            TextyMode.Shade => ShadeMode.CharSet,
+            _ => charSet
+        };
+
         var config = new Config
         {
             Input = input,
@@ -252,6 +295,10 @@ public record Config
             Output = output,
             Loop = loop,
             Speed = speed,
+            Blur = blur,
+            Contrast = contrast,
+            Brightness = brightness,
+            Saturation = saturation,
             NoClear = noClear,
             IsColor = color,
             FontSize = fontSize,

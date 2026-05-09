@@ -4,9 +4,9 @@ using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System.Text;
-using Texty.Configuration;
+using Texty.Core.Configuration;
 
-namespace Texty.Core.Object.Renderer;
+namespace Texty.Core.Renderer;
 
 public class Atlas
 {

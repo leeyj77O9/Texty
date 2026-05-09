@@ -1,9 +1,8 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Diagnostics;
-using Texty.Configuration;
+using Texty.Core.Configuration;
 
-namespace Texty;
+namespace Texty.Core.Util;
 
 public static class TextyLoader
 {
@@ -19,42 +18,14 @@ public static class TextyLoader
     {
         var (width, height) = (config.Width, config.Height);
         int frameSize = width * height * Config.PIXELFORMAT;
-        var startTimeArg = !string.IsNullOrEmpty(config.StartTime) ? $"-ss {config.StartTime} " : "";
-        var durationArg = !string.IsNullOrEmpty(config.Duration) ? $"-t {config.Duration} " : "";
 
-        if (!string.IsNullOrEmpty(config.EndTime))
-            if (TimeSpan.TryParse(config.EndTime, out var end) && TimeSpan.TryParse(config.StartTime, out var start))
-                durationArg = $"-t {(end - start).TotalSeconds} ";
+        using var ffmpeg = FFmpeg.Decoder(config, width, height);
 
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                Arguments =
-                    $"{startTimeArg} -i \"{config.Input}\" {durationArg}" +
-                    $"-vf scale={width}:{height}:flags=neighbor,fps={config.Fps} " +
-                    "-vsync 0 -f rawvideo -pix_fmt rgba pipe:1",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
+        ffmpeg.Start();
+        
+        _ = FFmpeg.ReadErrorAsync(ffmpeg, line => { }).ConfigureAwait(false);
 
-        process.Start();
-
-        _ = Task.Run(async () =>
-        {
-            string? line;
-            while ((line = await process.StandardError.ReadLineAsync()) != null)
-            {
-                
-            }
-        });
-
-        var output = process.StandardOutput.BaseStream;
+        var output = ffmpeg.StandardOutput.BaseStream;
         var buffer = new byte[frameSize];
 
         try
@@ -82,14 +53,14 @@ public static class TextyLoader
                 yield return Image.LoadPixelData<Rgba32>(buffer, width, height);
             }
 
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            await ffmpeg.WaitForExitAsync().ConfigureAwait(false);
 
-            if (process.ExitCode != 0)
+            if (ffmpeg.ExitCode != 0)
                 throw new Exception("FFmpeg failed");
         }
         finally
         {
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            await ffmpeg.WaitForExitAsync().ConfigureAwait(false);
         }
     }
 
@@ -121,26 +92,12 @@ public static class TextyLoader
 
     public static (int width, int height, double duration) GetVideoInfo(Config config)
     {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "ffprobe",
-                Arguments =
-                    $"-v error -select_streams v:0 " +
-                    $"-show_entries stream=width,height:format=duration " +
-                    $"-of default=noprint_wrappers=1 \"{config.Input}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
+        using var ffprobe = FFprobe.Create(config);
 
-        process.Start();
+        ffprobe.Start();
 
-        string output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
+        string output = ffprobe.StandardOutput.ReadToEnd();
+        ffprobe.WaitForExit();
 
         int width = 0, height = 0;
         double duration = 0;
@@ -156,11 +113,11 @@ public static class TextyLoader
                 height = int.Parse(line.AsSpan(7));
 
             else if (line.StartsWith("duration="))
-                double.TryParse(line.AsSpan(9), out duration);
+                _ = double.TryParse(line.AsSpan(9), out duration);
         }
 
         if (width == 0 || height == 0)
-            throw new Exception("Failed to parse resolution");
+            throw new FormatException("Failed to parse resolution");
 
         return (width, height, duration);
     }

@@ -26,10 +26,10 @@
 ## 📸 Preview
 
 ### GIF (Grayscale)
-<img src="./Core/assets/c.gif" width="400">
+<img src="./assets/c.gif" width="400">
 
 ### GIF (Color)
-<img src="./Core/assets/a.gif" width="400">
+<img src="./assets/a.gif" width="400">
 
 ---
 

@@ -1,8 +1,7 @@
 ﻿using SixLabors.ImageSharp;
-using Texty.Configuration;
-using Texty.Core.Object.Renderer;
+using Texty.Core.Configuration;
 
-namespace Texty.Renderer;
+namespace Texty.Core.Renderer;
 
 public class RenderContext
 {

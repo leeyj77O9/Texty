@@ -1,4 +1,4 @@
-﻿namespace Texty.Configuration;
+﻿namespace Texty.Core.Configuration;
 
 public enum TextyQuality
 {

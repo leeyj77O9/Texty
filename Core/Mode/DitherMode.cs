@@ -1,22 +1,16 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using Texty.Configuration;
+using Texty.Core.Configuration;
 using Texty.Core.Object;
 
-namespace Texty.Mode;
+namespace Texty.Core.Mode;
 
 public class DitherMode : ITextyMode
 {
     public TextyPixel[] Texty(Image<Rgba32> image, Config config)
     {
         var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
-        using var resized = image.Clone(ctx => ctx.Resize(new ResizeOptions
-        {
-            Size = new Size(width, height),
-            Mode = ResizeMode.Stretch,
-            Sampler = KnownResamplers.NearestNeighbor,
-        }));
+        using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];
         var buffer = new float[width * height];

@@ -1,4 +1,4 @@
-﻿namespace Texty.Configuration;
+﻿namespace Texty.Core.Configuration;
 
 public enum TextyMode
 {
@@ -7,4 +7,6 @@ public enum TextyMode
     Edge,
     Detail,
     Dither,
+    Block,
+    Shade,
 }

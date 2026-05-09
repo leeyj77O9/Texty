@@ -2,7 +2,7 @@
 using SixLabors.ImageSharp.PixelFormats;
 using Texty.Core.Object;
 
-namespace Texty.Renderer;
+namespace Texty.Core.Renderer;
 
 public class ColorRenderer : ITextyRenderer
 {
@@ -15,13 +15,13 @@ public class ColorRenderer : ITextyRenderer
         var image = new Image<Rgba32>(renderWidth, renderHeight, ctx.Config.BgColor);
         int rowWidth = charWidth * ctx.Config.CharSet.Length;
 
-        Parallel.For(0, height, x =>
+        image.ProcessPixelRows(accessor =>
         {
-            int destX = x * charHeight;
+            var src = ctx.Atlas.AsReadOnly();
 
-            image.ProcessPixelRows(accessor =>
+            for (int x = 0; x < height; x++)
             {
-                var src = ctx.Atlas.AsReadOnly();
+                int destX = x * charHeight;
 
                 for (int y = 0; y < width; y++)
                 {
@@ -45,11 +45,12 @@ public class ColorRenderer : ITextyRenderer
                             dest[destY + i].R = (byte)((r * inv + k) >> 8);
                             dest[destY + i].G = (byte)((g * inv + k) >> 8);
                             dest[destY + i].B = (byte)((b * inv + k) >> 8);
-                        }      
+                        }
                     }
                 }
+            }
 
-            });
+
         });
 
         return image;

@@ -1,6 +1,6 @@
-﻿using Texty.Configuration;
+﻿using Texty.Core.Configuration;
 
-namespace Texty;
+namespace Texty.Core.Object;
 
 public abstract class TextyObject : IDisposable
 {
@@ -10,9 +10,13 @@ public abstract class TextyObject : IDisposable
 
     public abstract void Save();
 
-    public abstract Task SaveAsync();
+    public abstract Task SaveAsync(CancellationToken ct = default);
 
     public abstract void Dispose();
 
     public static TextyObject FromConfig(Config config) => config.IsImage ? new TextyImage(config) : new TextyVideo(config);
+
+    public static TextyImage FromConfigToImage(Config config) => new(config);
+
+    public static TextyVideo FromConfigToVideo(Config config) => new(config);
 }

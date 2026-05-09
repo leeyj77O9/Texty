@@ -1,5 +1,4 @@
-﻿
-using SixLabors.ImageSharp.PixelFormats;
+﻿using SixLabors.ImageSharp.PixelFormats;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -16,6 +15,8 @@ public readonly struct TextyPixel : IEquatable<TextyPixel>
     [FieldOffset(0)] public readonly uint Value;
 
     public TextyPixel(Rgba32 rgb, byte index) : this(rgb.R, rgb.G, rgb.B, index) { }
+
+    public TextyPixel(Rgb24 rgb, byte index) : this(rgb.R, rgb.G, rgb.B, index) { }
 
     public TextyPixel(byte r, byte g, byte b, byte index)
     {       

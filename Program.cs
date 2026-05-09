@@ -2,24 +2,14 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using Texty;
-using Texty.Configuration;
+using Texty.Core.Configuration;
+using Texty.Core.Object;
 
 if (HandleSpecialArgs(args))
     return;
 
 Config config = ParseArgs();
-if (config == null) return;
-
-using var obj = TextyObject.FromConfig(config);
-
-EnableAnsi();
-
-if (obj == null)
-{
-    Console.WriteLine("Failed to create object.");
-    return;
-}
+using var obj = TextyObject.FromConfig(config) ?? throw new InvalidOperationException("Failed to create object.");
 
 if (config.Output != null)
     await HandleSave(obj);
@@ -33,8 +23,8 @@ bool HandleSpecialArgs(string[] args)
     if (args.Length == 0)
     {
         Console.WriteLine("Texty - Character-based Image/Video Renderer");
-        Console.WriteLine("Usage: Texty <input> [options]");
-        Console.WriteLine("\nTry 'Texty --help' for more information.");
+        Console.WriteLine("Usage: texty <input> [options]");
+        Console.WriteLine("\nTry 'texty --help' for more information.");
         return true;
     }
 
@@ -66,7 +56,9 @@ Config ParseArgs()
     {
         Console.WriteLine($"Error: {ex.Message}");
         Console.WriteLine("Use --help for usage.");
-        return null!;
+        Environment.Exit(0);
+
+        return null;   
     }    
 }
 
@@ -76,7 +68,7 @@ void ShowHelp()
 Texty - Character-based Image/Video Renderer
 
 Usage:
-  Texty <input> [options]
+  texty <input> [options]
 
 Arguments:
   <input>                      File path or URL
@@ -85,6 +77,12 @@ Rendering Options:
   --width, -w <int>            Output width (default: 100)
   --charset <string>           Characters used for rendering (default: " .:=*M#@")
   --invert, -i                 Invert brightness
+
+Video/Image Processing Options:
+  --blur <float>              Apply Gaussian blur (default: 0)
+  --contrast <float>          Adjust contrast (default: 1.0)
+  --brightness <float>        Adjust brightness (default: 1.0)
+  --saturation <float>        Adjust saturation (default: 1.0)
 
 Font Options (Image/Video output):
   --font-size, -fs <int>       Font size (default: 12)
@@ -167,13 +165,20 @@ void EnableAnsi()
     }
 }
 
-async Task HandleSave(TextyObject obj)
+async Task HandleSave(TextyObject obj, CancellationToken ct = default)
 {
-    var sw = Stopwatch.StartNew();
-    await obj.SaveAsync();
-    sw.Stop();
+    try
+    {
+        var sw = Stopwatch.StartNew();
+        await obj.SaveAsync(ct);
+        sw.Stop();
+        Console.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error during saving: {ex.Message}");        
+    }
 
-    Console.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
 }
 
 void HandleCopyToClipboard(TextyObject obj)
@@ -190,8 +195,12 @@ void HandleCopyToClipboard(TextyObject obj)
     }
 }
 
-async Task HandleRender(TextyObject obj)
+async Task HandleRender(TextyObject obj, CancellationToken ct = default)
 {
+    EnableAnsi();
+
+    Console.OutputEncoding = Encoding.UTF8;
+
     Console.CursorVisible = false;
     Console.CancelKeyPress += (sender, e) =>
     {
@@ -202,7 +211,7 @@ async Task HandleRender(TextyObject obj)
         Console.CursorVisible = true;
     };
 
-    using var writer = new StreamWriter(Console.OpenStandardOutput(), Encoding.UTF8, 1 << 16)
+    using var writer = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false), 1 << 20)
     {
         AutoFlush = false
     };
@@ -214,20 +223,24 @@ async Task HandleRender(TextyObject obj)
     }
 
     if (obj is not TextyVideo video)
+    {
+        writer.WriteLine("It's not texty object");
         return;
+    }
 
     do
     {
         var frameTime = 1000d / config.Fps / config.Speed;
+        var frameIndex = 0;
         var start = Stopwatch.GetTimestamp();
-        long frameIndex = 0;
 
-        await foreach (var frame in video!)
+        await foreach (string frame in video)
         {
             if (!config.NoClear)
-                writer.Write("\x1b[H");
+                Console.SetCursorPosition(0, 0);
 
             writer.Write(frame);
+            writer.Flush();           
 
             frameIndex++;
 
@@ -236,7 +249,7 @@ async Task HandleRender(TextyObject obj)
             var delay = targetTime - elapsed;
 
             if (delay > 2)
-                await Task.Delay((int)delay - 1);
+                await Task.Delay((int)delay - 1, ct);
             else if (delay > 0)
                 Thread.SpinWait(50);
         }

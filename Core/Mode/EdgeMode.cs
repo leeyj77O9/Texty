@@ -1,22 +1,16 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using Texty.Configuration;
+using Texty.Core.Configuration;
 using Texty.Core.Object;
 
-namespace Texty.Mode;
+namespace Texty.Core.Mode;
 
 public class EdgeMode : ITextyMode
 {
     public TextyPixel[] Texty(Image<Rgba32> image, Config config)
     {
         var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
-        using var resized = image.Clone(ctx => ctx.Resize(new ResizeOptions
-        {
-            Size = new Size(width, height),
-            Mode = ResizeMode.Stretch,
-            Sampler = KnownResamplers.NearestNeighbor,
-        }));
+        using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];
 
@@ -28,11 +22,11 @@ public class EdgeMode : ITextyMode
             _ => 30
         };
 
-        Parallel.For(0, height, y =>
+        resized.ProcessPixelRows(accessor =>
         {
-            int pos = y * width;
-            resized.ProcessPixelRows(accessor =>
+            for (int y = 0; y < height; y++)
             {
+                int pos = y * width;
                 var row = accessor.GetRowSpan(y);
                 var next = y + 1 == height ? accessor.GetRowSpan(y - 1) : accessor.GetRowSpan(y + 1);
 
@@ -50,8 +44,8 @@ public class EdgeMode : ITextyMode
 
                     result[pos + x] = new(p.R, p.G, p.B, (byte)(edge < threshold ? config.Runes.Length - 1 : 0));
                 }
+            }
 
-            });
         });
 
         return result;

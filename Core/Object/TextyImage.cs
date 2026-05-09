@@ -1,16 +1,17 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Text;
-using Texty.Configuration;
-using Texty.Mode;
-using Texty.Renderer;
+using Texty.Core.Configuration;
+using Texty.Core.Mode;
+using Texty.Core.Renderer;
+using Texty.Core.Util;
 
-namespace Texty;
+namespace Texty.Core.Object;
 
 public class TextyImage : TextyObject
 {
     private readonly Image<Rgba32> image;
-    private Config config;
+    private readonly Config config;
 
     public TextyImage(Config config)
     {
@@ -64,7 +65,7 @@ public class TextyImage : TextyObject
 
     public override void Save() => SaveAsync().GetAwaiter().GetResult();
 
-    public override async Task SaveAsync()
+    public override async Task SaveAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(config.Output))
             throw new ArgumentException("Output path is required. Please specify --output <path>");
@@ -73,22 +74,17 @@ public class TextyImage : TextyObject
         var renderer = TextyRendererProvider.Get(config);
         var ctx = new RenderContext(image.Width, image.Height, config);
 
-        var pixels = await mode.TextyAsync(image, config)
-            .ConfigureAwait(false);
-
-        using var img = await renderer.RenderAsync(pixels, ctx)
-            .ConfigureAwait(false);
+        var pixels = await mode.TextyAsync(image, config, ct).ConfigureAwait(false);
+        using var img = await renderer.RenderAsync(pixels, ctx, ct).ConfigureAwait(false);
 
         try
         {
-            await img.SaveAsync(config.Output)
-                     .ConfigureAwait(false);
+            await img.SaveAsync(config.Output, ct).ConfigureAwait(false);
         }
         catch (UnknownImageFormatException)
         {
             Console.WriteLine("Unsupported image format. Saving as PNG instead.");
-            await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"))
-                     .ConfigureAwait(false);
+            await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"), ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
