@@ -6,7 +6,7 @@ namespace Texty.Core.Renderer;
 
 public interface ITextyRenderer
 {
-    Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx);
+    Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx, CancellationToken ct = default);
 
-    Task<Image<Rgba32>> RenderAsync(TextyPixel[] frame, RenderContext ctx, CancellationToken ct = default) => Task.Run(() => Render(frame, ctx), ct);
+    Task<Image<Rgba32>> RenderAsync(TextyPixel[] frame, RenderContext ctx, CancellationToken ct = default) => Task.Run(() => Render(frame, ctx, ct), ct);
 }

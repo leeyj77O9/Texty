@@ -6,7 +6,7 @@ namespace Texty.Core.Renderer;
 
 public class ColorRenderer : ITextyRenderer
 {
-    public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx)
+    public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx, CancellationToken ct = default)
     {
         var (width, height) = ctx.GetSize();
         var (charWidth, charHeight) = ctx.GetCharSize();
@@ -21,6 +21,8 @@ public class ColorRenderer : ITextyRenderer
 
             for (int x = 0; x < height; x++)
             {
+                ct.ThrowIfCancellationRequested();
+
                 int destX = x * charHeight;
 
                 for (int y = 0; y < width; y++)
@@ -28,10 +30,11 @@ public class ColorRenderer : ITextyRenderer
                     var (r, g, b, idx) = frame[width * x + y];
                     int destY = y * charWidth;
 
+                    if (!ctx.Atlas.GetPos(idx, out var pos))
+                        continue;
+
                     for (int row = 0; row < charHeight; row++)
                     {
-                        if (!ctx.Atlas.GetPos(idx, out var pos))
-                            continue;
 
                         int offset = row * rowWidth + pos;
                         var dest = accessor.GetRowSpan(destX + row);

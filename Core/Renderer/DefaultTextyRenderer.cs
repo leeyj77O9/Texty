@@ -7,7 +7,7 @@ namespace Texty.Core.Renderer;
 
 public class DefaultTextyRenderer : ITextyRenderer
 {
-    public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx)
+    public Image<Rgba32> Render(TextyPixel[] frame, RenderContext ctx, CancellationToken ct = default)
     {
         var (width, height) = ctx.GetSize();
         var (charWidth, charHeight) = ctx.GetCharSize();
@@ -26,6 +26,8 @@ public class DefaultTextyRenderer : ITextyRenderer
 
             for (int x = 0; x < height; x++)
             {
+                ct.ThrowIfCancellationRequested();
+
                 var posRow = new int[width];
 
                 for (int i = 0; i < width; i++)
@@ -36,6 +38,8 @@ public class DefaultTextyRenderer : ITextyRenderer
 
                 for (int row = 0; row < charHeight; row++)
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     var dest = accessor.GetRowSpan(x * charHeight + row);
 
                     for (int i = 0; i < width; i++)

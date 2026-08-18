@@ -1,6 +1,5 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Diagnostics;
 using System.Text;
 using Texty.Core.Configuration;
 using Texty.Core.Mode;
@@ -75,17 +74,25 @@ public class TextyImage : TextyObject
         var renderer = TextyRendererProvider.Get(config);
         var ctx = new RenderContext(image.Width, image.Height, config);
 
-        var pixels = await mode.TextyAsync(image, config, ct).ConfigureAwait(false);
-        using var img = await renderer.RenderAsync(pixels, ctx, ct).ConfigureAwait(false);
-
         try
         {
-            await img.SaveAsync(config.Output, ct).ConfigureAwait(false);
+            var pixels = await mode.TextyAsync(image, config, ct).ConfigureAwait(false);
+            using var img = await renderer.RenderAsync(pixels, ctx, ct).ConfigureAwait(false);
+
+            try
+            {
+                await img.SaveAsync(config.Output, ct).ConfigureAwait(false);
+            }
+            catch (UnknownImageFormatException)
+            {
+                Console.WriteLine("Unsupported image format. Saving as PNG instead.");
+
+                await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"), ct).ConfigureAwait(false);
+            }
         }
-        catch (UnknownImageFormatException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            Console.WriteLine("Unsupported image format. Saving as PNG instead.");
-            await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"), ct).ConfigureAwait(false);
+            Console.WriteLine("Operation canceled.");
         }
         catch (Exception ex)
         {

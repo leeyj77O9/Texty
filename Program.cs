@@ -10,13 +10,14 @@ if (HandleSpecialArgs(args))
 
 Config config = ParseArgs();
 using var obj = TextyObject.FromConfig(config) ?? throw new InvalidOperationException("Failed to create object.");
+using var cts = new CancellationTokenSource();
 
 if (config.Output != null)
-    await HandleSave(obj);
+    await HandleSave(obj, cts.Token);
 else if (config.CopyToClipboard)
     HandleCopyToClipboard(obj);
 else
-    await HandleRender(obj);
+    await HandleRender(obj, cts.Token);
 
 bool HandleSpecialArgs(string[] args)
 {
@@ -213,8 +214,9 @@ async Task HandleRender(TextyObject obj, CancellationToken ct = default)
     {
         e.Cancel = true;
 
+        cts.Cancel();
         obj.Dispose();
-
+        
         Console.CursorVisible = true;
     };
 
@@ -243,7 +245,7 @@ async Task HandleRender(TextyObject obj, CancellationToken ct = default)
         var frameIndex = 0;
         var start = Stopwatch.GetTimestamp();
 
-        await foreach (string frame in video)
+        await foreach (string frame in video.WithCancellation(ct))
         {
             if (!config.NoClear)
                 Console.SetCursorPosition(0, 0);

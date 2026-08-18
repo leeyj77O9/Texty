@@ -42,7 +42,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         images = TextyLoader.ExtractFramesAsync(this.config);
     }
 
-    public override string Texty() => throw new NotSupportedException("Use TextyAsync()");
+    public override string Texty() => throw new NotSupportedException("Use IAsyncEnumerable<string> to iterate over frames");
 
     public override void Save() => SaveAsync().GetAwaiter().GetResult();
 
@@ -71,13 +71,14 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         };
 
         ffmpeg.Start();
+
         var progress = FFmpeg.MonitorProgressAsync(ffmpeg, Duration ?? 0, ct);        
 
         try
         {
             await using var stdin = new BufferedStream(ffmpeg.StandardInput.BaseStream, 1 << 20);
 
-            await foreach (var frame in images)
+            await foreach (var frame in images.WithCancellation(ct))
             {
                 using (frame)
                 {
@@ -100,6 +101,10 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
                 throw new Exception($"FFmpeg exited with code {ffmpeg.ExitCode}");
 
             await progress.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

@@ -84,25 +84,18 @@ public static class FFmpeg
         };
     }
 
-    public static Task ReadErrorAsync(Process process, Action<string> onLine, CancellationToken ct = default)
+    public static async Task ReadErrorAsync(Process process, Action<string> onLine, CancellationToken ct = default)
     {
-        return Task.Run(async () =>
+        try
         {
             string? line;
 
-            try
-            {
-                while (!ct.IsCancellationRequested &&
-                       (line = await process.StandardError.ReadLineAsync()) != null)
-                {
-                    onLine(line);
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                
-            }
-        }, ct);
+            while ((line = await process.StandardError.ReadLineAsync(ct)) != null)
+                onLine(line);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     public static async Task<string> MonitorProgressAsync(Process ffmpeg, double duration, CancellationToken ct = default)
