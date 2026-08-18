@@ -74,7 +74,7 @@ Arguments:
   <input>                      File path or URL
 
 Rendering Options:
-  --width, -w <int>            Output width (default: 100)
+  --width, -w <int>            Number of characters per line (default: 100)
   --charset <string>           Characters used for rendering (default: " .:=*M#@")
   --invert, -i                 Invert brightness
 
@@ -183,6 +183,12 @@ async Task HandleSave(TextyObject obj, CancellationToken ct = default)
 
 void HandleCopyToClipboard(TextyObject obj)
 {
+    if (obj is not TextyImage img)
+    {
+        Console.WriteLine("Copy to clipboard is only supported for images.");
+        return;
+    }
+
     var text = obj.Texty();
     try
     {
@@ -198,6 +204,7 @@ void HandleCopyToClipboard(TextyObject obj)
 async Task HandleRender(TextyObject obj, CancellationToken ct = default)
 {
     EnableAnsi();
+    var sw = Stopwatch.StartNew();
 
     Console.OutputEncoding = Encoding.UTF8;
 
@@ -219,6 +226,8 @@ async Task HandleRender(TextyObject obj, CancellationToken ct = default)
     if (obj is TextyImage img)
     {
         writer.WriteLine(img.Texty());
+        sw.Stop();
+        writer.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
         return;
     }
 
@@ -255,6 +264,9 @@ async Task HandleRender(TextyObject obj, CancellationToken ct = default)
         }
 
     } while (config.Loop);
+
+    sw.Stop();
+    writer.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
 }
 
 [DllImport("kernel32.dll", SetLastError = true)]

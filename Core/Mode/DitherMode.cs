@@ -9,7 +9,7 @@ public class DitherMode : ITextyMode
 {
     public TextyPixel[] Texty(Image<Rgba32> image, Config config)
     {
-        var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
+        var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];
@@ -23,8 +23,7 @@ public class DitherMode : ITextyMode
                 for (int x = 0; x < width; x++)
                 {
                     var p = row[x];
-                    buffer[y * width + x] =
-                        (p.R * 77 + p.G * 150 + p.B * 29) / 256f;
+                    buffer[y * width + x] = (p.R * 77 + p.G * 150 + p.B * 29) / 256f;
                 }
             }
         });

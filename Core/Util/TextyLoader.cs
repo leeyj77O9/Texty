@@ -68,8 +68,7 @@ public static class TextyLoader
     {
         var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{config.Extension}");
 
-        using var res = await _http.GetAsync(config.Input, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
+        using var res = await _http.GetAsync(config.Input, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
         if (!res.IsSuccessStatusCode)
         {

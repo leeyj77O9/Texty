@@ -1,5 +1,6 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using System.Diagnostics;
 using System.Text;
 using Texty.Core.Configuration;
 using Texty.Core.Mode;
@@ -31,7 +32,7 @@ public class TextyImage : TextyObject
 
     public string Texty(ITextyMode mode)
     {
-        var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
+        var (width, height) = (config.Width, (int)(config.Height * config.CharRatio));
         var pixels = mode.Texty(image, config);
         var lines = new string[height];
 

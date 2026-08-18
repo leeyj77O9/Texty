@@ -14,9 +14,7 @@ public interface ITextyMode
 
     protected static Image<Rgba32> Clone(Image<Rgba32> image, int width, int height, Config config)
     {
-        var img = (width == image.Width && height == image.Height)
-        ? image.Clone()
-        : image.Clone(ctx => ctx.Resize(new ResizeOptions
+        var img = (width == image.Width && height == image.Height) ? image.Clone() : image.Clone(ctx => ctx.Resize(new ResizeOptions
         {
             Size = new Size(width, height),
             Mode = ResizeMode.Stretch,

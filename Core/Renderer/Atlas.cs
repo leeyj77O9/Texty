@@ -50,14 +50,25 @@ public class Atlas
     }
 
     public void Update()
-    {        
+    {
         var options = new TextOptions(Font);
 
         foreach (var c in Config.Runes)
-            CharBounds.TryAdd(c, TextMeasurer.MeasureBounds(c.ToString(), options));
+            CharBounds[c] = TextMeasurer.MeasureBounds(c.ToString(), options);
 
-        CharWidth = CharBounds.Max(x => (int)Math.Ceiling(x.Value.Width));
-        CharHeight = CharBounds.Max(x => (int)Math.Ceiling(x.Value.Height));
+        double totalWidth = 0;
+        double maxHeight = 0;
+
+        foreach (char c in Config.SET)
+        {
+            var bounds = TextMeasurer.MeasureBounds(c.ToString(), options);
+
+            totalWidth += bounds.Width;
+            maxHeight = Math.Max(maxHeight, bounds.Height);
+        }
+
+        CharWidth = (int)Math.Ceiling(totalWidth / Config.SET.Length);
+        CharHeight = (int)Math.Ceiling(maxHeight);
 
         BuildAtlas();
     }

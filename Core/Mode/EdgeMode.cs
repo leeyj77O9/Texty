@@ -9,7 +9,7 @@ public class EdgeMode : ITextyMode
 {
     public TextyPixel[] Texty(Image<Rgba32> image, Config config)
     {
-        var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
+        var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];

@@ -15,10 +15,9 @@ public class DefaultTextyRenderer : ITextyRenderer
 
         var image = new Image<Rgba32>(renderWidth, renderHeight, ctx.Config.BgColor);
 
-        var cfg = ctx.Config;
         var atlas = ctx.Atlas;
         var src = atlas.AsSpan();
-        var lenRow = charWidth * cfg.CharSet.Length;
+        var lenRow = charWidth * ctx.Config.CharSet.Length;
         uint byteCount = (uint)(charWidth * Config.PIXELFORMAT);
 
         image.ProcessPixelRows(accessor =>

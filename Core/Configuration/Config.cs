@@ -10,7 +10,9 @@ public record Config
     public static readonly Config Default = new();
 
     public const int PIXELFORMAT = 4;
-    public const double CHARRATIO = 0.54;
+    public const string SET = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789@#S%?*+;:,.";
+
+    public double CharRatio { get; init; } = 0.637;
 
     public string Input { get; init; } = string.Empty;
     public int Width { get; init; } = 100;    
@@ -70,6 +72,8 @@ public record Config
         if (!IsImage && !IsVideo) throw new ArgumentException($"Unsupported file type: {Extension}");
     }
 
+    public Size GetRenderSize() => new(Width, (int)(Height * CharRatio));
+
     public static Config FromArgs(string[] args)
     {
         if (args.Length == 0)
@@ -77,7 +81,10 @@ public record Config
 
         string input = args[0];
 
-        if (string.IsNullOrWhiteSpace(input) || !File.Exists(input))
+        if (string.IsNullOrWhiteSpace(input))
+            throw new ArgumentException($"Input is required");
+
+        if (!File.Exists(input) && !Uri.IsWellFormedUriString(input, UriKind.Absolute))
             throw new ArgumentException($"Input file does not exist: {input}");
 
         var width = 100;
@@ -275,14 +282,17 @@ public record Config
             }
         }
 
+        
+
         width = width % 2 == 0 ? width : width - 1;
 
         charSet = mode switch
         { 
-            TextyMode.Block => BlockMode.CharSet,
             TextyMode.Shade => ShadeMode.CharSet,
             _ => charSet
         };
+
+        var charRatio = GetCharRatio(fontName, fontSize, fontStyle);
 
         var config = new Config
         {
@@ -315,6 +325,7 @@ public record Config
             Duration = duration,
             EndTime = endTime,
             Runes = [.. invert ? charSet.EnumerateRunes().Reverse() : charSet.EnumerateRunes()],
+            CharRatio = charRatio,
         };
 
         return ApplyQualitySettings(config);
@@ -389,5 +400,24 @@ public record Config
 
             _ => config
         };
+    }
+
+    private static double GetCharRatio(string fontName, int fontSize, FontStyle fontStyle)
+    {
+        var font = SystemFonts.CreateFont(fontName, fontSize, fontStyle);
+        var options = new TextOptions(font);
+
+        double totalWidth = 0;
+        double maxHeight = 0;
+
+        foreach (char c in SET)
+        {
+            var bound = TextMeasurer.MeasureBounds(c.ToString(), options);
+
+            totalWidth += bound.Width;
+            maxHeight = Math.Max(maxHeight, bound.Height);
+        }
+
+        return Math.Ceiling(totalWidth / SET.Length) / Math.Ceiling(maxHeight);
     }
 }

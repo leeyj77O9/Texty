@@ -14,24 +14,14 @@ public static class FFmpeg
     {
         var args = BuildEncoderArgs(config, width, height);
 
-        return CreateProcess(
-            "ffmpeg",
-            args,
-            redirectInput: true,
-            redirectOutput: false
-        );
+        return CreateProcess("ffmpeg", args, true, false);
     }
 
     public static Process Decoder(Config config, int width, int height)
     {
         var args = BuildDecoderArgs(config, width, height);
 
-        return CreateProcess(
-            "ffmpeg",
-            args,
-            redirectInput: false,
-            redirectOutput: true
-        );
+        return CreateProcess("ffmpeg", args, false, true);
     }
 
     private static string BuildEncoderArgs(Config config, int width, int height)
@@ -41,7 +31,7 @@ public static class FFmpeg
         var sb = new StringBuilder();
 
         sb.Append("-stats -stats_period 0.2 -y ");
-        sb.Append($"-f rawvideo -pix_fmt {(Config.PIXELFORMAT == 4 ? "rgba" : "rgb24")} -video_size {width}x{height} ");
+        sb.Append($"-f rawvideo -pix_fmt {(Config.PIXELFORMAT == 4 ? "rgba" : Config.PIXELFORMAT == 3 ? "rgb24" : "yuv420p")} -video_size {width}x{height} ");
         sb.Append($"-r {config.Fps} -i - ");
 
         if (isGif)
@@ -68,13 +58,8 @@ public static class FFmpeg
         var durationArg = !string.IsNullOrEmpty(config.Duration) ? $"-t {config.Duration} " : "";
 
         if (!string.IsNullOrEmpty(config.EndTime))
-        {
-            if (TimeSpan.TryParse(config.EndTime, out var end) &&
-                TimeSpan.TryParse(config.StartTime, out var start))
-            {
+            if (TimeSpan.TryParse(config.EndTime, out var end) &&TimeSpan.TryParse(config.StartTime, out var start))
                 durationArg = $"-t {(end - start).TotalSeconds} ";
-            }
-        }
 
         return
             $"{startTimeArg}-i \"{config.Input}\" {durationArg}" +
@@ -144,8 +129,7 @@ public static class FFmpeg
                     return;
 
                 if (speed > 0)
-                    smoothedSpeed = smoothedSpeed == 0 ? speed
-                        : smoothedSpeed * (1 - ALPHA) + speed * ALPHA;
+                    smoothedSpeed = smoothedSpeed == 0 ? speed : smoothedSpeed * (1 - ALPHA) + speed * ALPHA;
 
                 double percent = duration > 0 ? current / duration : 0;
                 percent = Math.Clamp(percent * 100, 0, 100);

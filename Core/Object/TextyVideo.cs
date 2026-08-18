@@ -63,6 +63,12 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         var ctx = new RenderContext(width, height, config);
         var frameBytes = new byte[width * height * Config.PIXELFORMAT];
         using var ffmpeg = FFmpeg.Encoder(config, width, height);
+        var option = new ResizeOptions
+        {
+            Size = new Size(width, height),
+            Mode = ResizeMode.Stretch,
+            Sampler = KnownResamplers.NearestNeighbor
+        };
 
         ffmpeg.Start();
         var progress = FFmpeg.MonitorProgressAsync(ffmpeg, Duration ?? 0, ct);        
@@ -78,13 +84,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
                     var pixels = await tm.TextyAsync(frame, config, ct).ConfigureAwait(false);
                     using var img = await renderer.RenderAsync(pixels, ctx, ct).ConfigureAwait(false);
 
-                    img.Mutate(x => x.Resize(new ResizeOptions
-                    {
-                        Size = new Size(width, height),
-                        Mode = ResizeMode.Stretch,
-                        Sampler = KnownResamplers.NearestNeighbor
-                    }));
-
+                    img.Mutate(x => x.Resize(option));
                     img.CopyPixelDataTo(frameBytes);
 
                     await stdin.WriteAsync(frameBytes, ct).ConfigureAwait(false);

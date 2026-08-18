@@ -11,8 +11,7 @@ public class ShadeMode : ITextyMode
 
     public TextyPixel[] Texty(Image<Rgba32> image, Config config)
     {
-        var (width, height) = (config.Width, (int)(config.Height * Config.CHARRATIO));
-
+        var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];
@@ -32,10 +31,7 @@ public class ShadeMode : ITextyMode
 
                     int idx = (gray * (config.CharSet.Length - 1)) >> 8;
 
-                    result[baseIndex + x] = new TextyPixel(
-                        p,
-                        (byte)idx
-                    );
+                    result[baseIndex + x] = new TextyPixel(p, (byte)idx);
                 }
             }
         });

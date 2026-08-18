@@ -14,7 +14,7 @@ public class RenderContext
         Atlas = new Atlas(config);
     }
 
-    public Size GetSize() => new(Config.Width, (int)(Config.Height * Config.CHARRATIO));
+    public Size GetSize() => new(Config.Width, (int)(Config.Height * Config.CharRatio));
 
     public Size GetCharSize() => Atlas.GetCharSize();
 

@@ -9,7 +9,6 @@ public static class TextyModeProvider
         TextyMode.Edge => new EdgeMode(),
         TextyMode.Detail => new DetailMode(),
         TextyMode.Dither => new DitherMode(),
-        TextyMode.Block => new BlockMode(),
         _ => new DefaultTextyMode(),
     };
 }
