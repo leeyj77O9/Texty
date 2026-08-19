@@ -18,7 +18,7 @@ public class DefaultTextyRenderer : ITextyRenderer
         var atlas = ctx.Atlas;
         var src = atlas.AsSpan();
         var lenRow = charWidth * ctx.Config.CharSet.Length;
-        uint byteCount = (uint)(charWidth * Config.PIXELFORMAT);
+        uint byteCount = (uint)(charWidth * TextyConfig.PIXELFORMAT);
 
         image.ProcessPixelRows(accessor =>
         {

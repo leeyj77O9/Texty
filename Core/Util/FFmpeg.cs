@@ -10,28 +10,28 @@ public static class FFmpeg
     public const double ALPHA = 0.1;
     public static int BarWidth { get; set; } = 40;
 
-    public static Process Encoder(Config config, int width, int height)
+    public static Process Encoder(TextyConfig config, int width, int height)
     {
         var args = BuildEncoderArgs(config, width, height);
 
         return CreateProcess("ffmpeg", args, true, false);
     }
 
-    public static Process Decoder(Config config, int width, int height)
+    public static Process Decoder(TextyConfig config, int width, int height)
     {
         var args = BuildDecoderArgs(config, width, height);
 
         return CreateProcess("ffmpeg", args, false, true);
     }
 
-    private static string BuildEncoderArgs(Config config, int width, int height)
+    private static string BuildEncoderArgs(TextyConfig config, int width, int height)
     {
         bool isGif = config.Output?.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ?? false;
 
         var sb = new StringBuilder();
 
         sb.Append("-stats -stats_period 0.2 -y ");
-        sb.Append($"-f rawvideo -pix_fmt {(Config.PIXELFORMAT == 4 ? "rgba" : Config.PIXELFORMAT == 3 ? "rgb24" : "yuv420p")} -video_size {width}x{height} ");
+        sb.Append($"-f rawvideo -pix_fmt {(TextyConfig.PIXELFORMAT == 4 ? "rgba" : TextyConfig.PIXELFORMAT == 3 ? "rgb24" : "yuv420p")} -video_size {width}x{height} ");
         sb.Append($"-r {config.Fps} -i - ");
 
         if (isGif)
@@ -52,19 +52,24 @@ public static class FFmpeg
         return sb.ToString();
     }
 
-    private static string BuildDecoderArgs(Config config, int width, int height)
+    private static string BuildDecoderArgs(TextyConfig config, int width, int height)
     {
-        var startTimeArg = !string.IsNullOrEmpty(config.StartTime) ? $"-ss {config.StartTime} " : "";
-        var durationArg = !string.IsNullOrEmpty(config.Duration) ? $"-t {config.Duration} " : "";
+        var startTimeArg = config.StartTime.HasValue ? $"-ss {config.StartTime.Value} " : "";
+        var duration = config.Duration;
 
-        if (!string.IsNullOrEmpty(config.EndTime))
-            if (TimeSpan.TryParse(config.EndTime, out var end) &&TimeSpan.TryParse(config.StartTime, out var start))
-                durationArg = $"-t {(end - start).TotalSeconds} ";
+        if (config.EndTime.HasValue)
+        {
+            var start = config.StartTime ?? TimeSpan.Zero;
+            duration = config.EndTime.Value - start;
+        }
+
+        var durationArg = duration.HasValue ? $"-t {duration.Value.TotalSeconds.ToString(CultureInfo.InvariantCulture)} " : "";
 
         return
             $"{startTimeArg}-i \"{config.Input}\" {durationArg}" +
             $"-vf scale={width}:{height}:flags=neighbor,fps={config.Fps} " +
-            $"-vsync 0 -f rawvideo -pix_fmt {(Config.PIXELFORMAT == 4 ? "rgba" : "rgb24")} pipe:1";
+            $"-vsync 0 -f rawvideo " +
+            $"-pix_fmt {(TextyConfig.PIXELFORMAT == 4 ? "rgba" : "rgb24")} pipe:1";
     }
 
     private static Process CreateProcess(string fileName, string args, bool redirectInput, bool redirectOutput)
@@ -133,26 +138,13 @@ public static class FFmpeg
 
             }, ct).ConfigureAwait(false);
 
-            await ffmpeg.WaitForExitAsync(ct).ConfigureAwait(false);
-
             RenderProgress(100, 0, BarWidth);
             Console.WriteLine();
-
-            if (ffmpeg.ExitCode != 0)
-                throw new Exception($"FFmpeg failed:\n{errorBuilder}");
 
             return errorBuilder.ToString();
         }
         finally
         {
-            try
-            {
-                if (!ffmpeg.HasExited)
-                    ffmpeg.Kill(true);
-            }
-            catch { }
-
-            ffmpeg.Dispose();
         }
     }
 

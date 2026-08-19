@@ -5,7 +5,7 @@ namespace Texty.Core.Util;
 
 public static class FFprobe
 {
-    public static Process Create(Config config)
+    public static Process Create(TextyConfig config)
     {
         var args = BuildArgs(config);
 
@@ -23,7 +23,7 @@ public static class FFprobe
         };
     }
 
-    private static string BuildArgs(Config config)
+    private static string BuildArgs(TextyConfig config)
     {
         return
             "-v error -select_streams v:0 " +

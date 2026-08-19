@@ -5,10 +5,10 @@ namespace Texty.Core.Renderer;
 
 public class RenderContext
 {
-    public Config Config { get; }
+    public TextyConfig Config { get; }
     public Atlas Atlas { get; } 
 
-    public RenderContext(int width, int height, Config config)
+    public RenderContext(int width, int height, TextyConfig config)
     {
         Config = config with { Height = (int)(height * ((float)config.Width / width)) };
         Atlas = new Atlas(config);

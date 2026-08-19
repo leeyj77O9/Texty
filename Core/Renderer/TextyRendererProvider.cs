@@ -4,5 +4,5 @@ namespace Texty.Core.Renderer;
 
 public static class TextyRendererProvider
 {
-    public static ITextyRenderer Get(Config config) => config.IsColor ? new ColorRenderer() : new DefaultTextyRenderer();
+    public static ITextyRenderer Get(TextyConfig config) => config.IsColor ? new ColorRenderer() : new DefaultTextyRenderer();
 }

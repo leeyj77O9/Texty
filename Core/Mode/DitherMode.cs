@@ -7,7 +7,7 @@ namespace Texty.Core.Mode;
 
 public class DitherMode : ITextyMode
 {
-    public TextyPixel[] Texty(Image<Rgba32> image, Config config)
+    public TextyPixel[] Texty(Image<Rgba32> image, TextyConfig config)
     {
         var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);
@@ -41,21 +41,14 @@ public class DitherMode : ITextyMode
                 float newPixel = index * (255f / (config.CharSet.Length - 1));
                 float error = oldPixel - newPixel;
 
-                result[i] = new TextyPixel(
-                    (byte)newPixel,
-                    (byte)newPixel,
-                    (byte)newPixel,
-                    (byte)index
-                );
+                result[i] = new TextyPixel((byte)newPixel, (byte)newPixel, (byte)newPixel, (byte)index);
 
                 void Add(int dx, int dy, float factor)
                 {
                     int nx = x + dx;
                     int ny = y + dy;
                     if (nx >= 0 && nx < width && ny >= 0 && ny < height)
-                    {
                         buffer[ny * width + nx] += error * factor;
-                    }
                 }
 
                 Add(1, 0, 7f / 16f);

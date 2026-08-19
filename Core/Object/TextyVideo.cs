@@ -12,32 +12,32 @@ namespace Texty.Core.Object;
 public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<string>
 {
     private readonly IAsyncEnumerable<Image<Rgba32>> images;
-    private readonly Config config;
-    private readonly string? FilePath;
-    private readonly double? Duration;
+    private readonly TextyConfig config;
+    private readonly string? filePath;
+    private readonly double? duration;
 
-    public TextyVideo(Config config)
+    private TextyVideo(TextyConfig config, string? filePath)
     {
-        if (config.IsUrl)
-        {
-            FilePath = TextyLoader.DownloadFile(config).Result;
-            config = config with { Input = FilePath };
-        }
+        this.config = config;
+        this.filePath = filePath;
 
         var (width, height, duration) = TextyLoader.GetVideoInfo(config);
-        this.config = config with { Height = (int)(height * ((float)config.Width / width)) };
+        if (config.Height < 1)
+            this.config = config with { Height = (int)(height * ((float)config.Width / width)) };
+        else 
+            this.config = config;
 
-        if (!string.IsNullOrEmpty(config.Duration))
+        if (config.Duration is not null)
         {
-            Duration = TimeSpan.Parse(config.Duration).TotalSeconds;
+            this.duration = config.Duration.Value.TotalSeconds;
         }
-        else if (!string.IsNullOrEmpty(config.EndTime) && !string.IsNullOrEmpty(config.StartTime))
+        else if (config.EndTime is not null || config.StartTime is not null)
         {
-            var end = TimeSpan.Parse(config.EndTime);
-            var start = TimeSpan.Parse(config.StartTime);
-            Duration = (end - start).TotalSeconds;
+            var end = config.EndTime ?? TimeSpan.FromSeconds(duration);
+            var start = config.StartTime ?? TimeSpan.Zero;
+            this.duration = (end - start).TotalSeconds;
         }
-        else Duration = duration;
+        else this.duration = duration;
 
         images = TextyLoader.ExtractFramesAsync(this.config);
     }
@@ -61,7 +61,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         var tm = TextyModeProvider.Get(config.Mode);
         var renderer = TextyRendererProvider.Get(config);
         var ctx = new RenderContext(width, height, config);
-        var frameBytes = new byte[width * height * Config.PIXELFORMAT];
+        var frameBytes = new byte[width * height * TextyConfig.PIXELFORMAT];
         using var ffmpeg = FFmpeg.Encoder(config, width, height);
         var option = new ResizeOptions
         {
@@ -72,7 +72,7 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
 
         ffmpeg.Start();
 
-        var progress = FFmpeg.MonitorProgressAsync(ffmpeg, Duration ?? 0, ct);        
+        var progress = FFmpeg.MonitorProgressAsync(ffmpeg, duration ?? 0, ct);        
 
         try
         {
@@ -104,6 +104,8 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            if (!ffmpeg.HasExited)
+                ffmpeg.Kill(true);
             throw;
         }
         catch (Exception ex)
@@ -111,14 +113,24 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
             Console.WriteLine($"Error during saving video: {ex.Message}");
             throw;
         }
+        finally
+        {
+            if (!ffmpeg.HasExited)
+                ffmpeg.Kill(true);
+        }
     }
 
     public override void Dispose()
     {
-        if (FilePath is not null && File.Exists(FilePath))
-            File.Delete(FilePath);
-
-        GC.SuppressFinalize(this);
+        try
+        {
+            if (filePath is not null && File.Exists(filePath))
+                File.Delete(filePath);
+        }
+        finally
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 
     public IEnumerator<string> GetEnumerator()
@@ -132,16 +144,30 @@ public class TextyVideo : TextyObject, IEnumerable<string>, IAsyncEnumerable<str
         }
     }    
 
-    public async IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    public async IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken ct = default)
     {
-        await foreach(var img in images)   
+        await foreach(var img in images.WithCancellation(ct))   
         {
             using (img)
             {
-                yield return new TextyImage(img, config).Texty();
+                yield return await new TextyImage(img, config).TextyAsync(ct).ConfigureAwait(false);
             }
         }
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public static async Task<TextyVideo> CreateAsync(TextyConfig config, CancellationToken ct = default)
+    {
+        string? filePath = null;
+
+        if (config.IsUrl)
+        {
+            filePath = await TextyLoader.DownloadFile(config, ct).ConfigureAwait(false);
+
+            config = config with { Input = filePath };
+        }
+
+        return new TextyVideo(config, filePath);
+    }
 }

@@ -12,18 +12,18 @@
 
 ---
 
-## ✨ Features
+## Features
 
-* ⚡ High-performance pixel-to-character rendering
-* 🎬 Real-time video playback in terminal
-* 🌈 24-bit ANSI color support
-* 🔤 Custom charset & depth control
-* 📦 Export to video using FFmpeg
-* 🖥 Cross-platform (.NET)
+* High-performance pixel-to-character rendering
+* Real-time video playback in terminal
+* 24-bit ANSI color support
+* Custom charset & depth control
+* Export to video using FFmpeg
+* Cross-platform (.NET)
 
 ---
 
-## 📸 Preview
+## Preview
 
 ### GIF (Grayscale)
 <img src="./assets/c.gif" width="400">
@@ -33,7 +33,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 texty <input> [options]
@@ -60,7 +60,7 @@ texty video.mp4 --codec libx265 --crf 24
 
 ---
 
-## ⚙️ Installation
+## Installation
 
 ```bash
 git clone https://github.com/leeyj77O9/Texty.git
@@ -70,7 +70,7 @@ dotnet build -c Release
 
 ---
 
-## 🧠 Usage
+## Usage
 
 ```bash
 texty <input> [options]
@@ -84,7 +84,7 @@ texty <input> [options]
 
 ---
 
-## 🛠 Options
+## Options
 
 | Option    | Description                 |
 | --------- | --------------------------- |
@@ -96,14 +96,14 @@ texty <input> [options]
 
 ---
 
-## 📦 Requirements
+## Requirements
 
 * .NET 10 SDK
 * FFmpeg *(required for video export)*
 
 ---
 
-## 🎯 Design Philosophy
+## Design Philosophy
 
 * **CLI-first** → no UI, just fast terminal workflows
 * **Performance-focused** → optimized rendering pipeline
@@ -112,12 +112,12 @@ texty <input> [options]
 
 ---
 
-## 📄 License
+## License
 
 MIT License
 
 ---
 
-## ⭐ Support
+## Support
 
 If you find this project useful, consider giving it a star on GitHub!

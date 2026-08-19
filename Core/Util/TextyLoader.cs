@@ -1,5 +1,7 @@
 ﻿using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using Texty.Core.Configuration;
 
 namespace Texty.Core.Util;
@@ -8,22 +10,22 @@ public static class TextyLoader
 {
     private static readonly HttpClient _http = new();
 
-    public static byte[] Load(Config config) => LoadAsync(config).GetAwaiter().GetResult();
+    public static byte[] Load(TextyConfig config) => LoadAsync(config).GetAwaiter().GetResult();
 
-    public static async Task<byte[]> LoadAsync(Config config, CancellationToken ct = default)
+    public static async Task<byte[]> LoadAsync(TextyConfig config, CancellationToken ct = default)
         => await (config.IsUrl ? _http.GetByteArrayAsync(config.Input, ct).ConfigureAwait(false)
         : File.ReadAllBytesAsync(config.Input, ct).ConfigureAwait(false));
 
-    public static async IAsyncEnumerable<Image<Rgba32>> ExtractFramesAsync(Config config)
+    public static async IAsyncEnumerable<Image<Rgba32>> ExtractFramesAsync(TextyConfig config, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var (width, height) = (config.Width, config.Height);
-        int frameSize = width * height * Config.PIXELFORMAT;
+        int frameSize = width * height * TextyConfig.PIXELFORMAT;
 
         using var ffmpeg = FFmpeg.Decoder(config, width, height);
 
         ffmpeg.Start();
         
-        _ = FFmpeg.ReadErrorAsync(ffmpeg, line => { }).ConfigureAwait(false);
+        _ = FFmpeg.ReadErrorAsync(ffmpeg, line => { }, ct).ConfigureAwait(false);
 
         var output = ffmpeg.StandardOutput.BaseStream;
         var buffer = new byte[frameSize];
@@ -36,7 +38,7 @@ public static class TextyLoader
 
                 while (read < frameSize)
                 {
-                    int n = await output.ReadAsync(buffer.AsMemory(read, frameSize - read)).ConfigureAwait(false);
+                    int n = await output.ReadAsync(buffer.AsMemory(read, frameSize - read), ct).ConfigureAwait(false);
 
                     if (n == 0)
                         break;
@@ -53,43 +55,67 @@ public static class TextyLoader
                 yield return Image.LoadPixelData<Rgba32>(buffer, width, height);
             }
 
-            await ffmpeg.WaitForExitAsync().ConfigureAwait(false);
+            await ffmpeg.WaitForExitAsync(ct).ConfigureAwait(false);
 
             if (ffmpeg.ExitCode != 0)
                 throw new Exception("FFmpeg failed");
         }
         finally
         {
-            await ffmpeg.WaitForExitAsync().ConfigureAwait(false);
+            try
+            {
+                if (!ffmpeg.HasExited)
+                    ffmpeg.Kill(true);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                await ffmpeg.WaitForExitAsync(ct).ConfigureAwait(false);
+            }
+            catch
+            {
+            }
         }
     }
 
-    public static async Task<string> DownloadFile(Config config, CancellationToken ct = default)
+    public static async Task<string> DownloadFile(TextyConfig config, CancellationToken ct = default)
     {
-        var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{config.Extension}");
-
-        using var res = await _http.GetAsync(config.Input, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-
-        if (!res.IsSuccessStatusCode)
+        var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}{config.Extension}");
+        try
         {
-            throw new HttpRequestException(
-                $"Failed to download file. Status: {(int)res.StatusCode} {res.ReasonPhrase}");
+            using var res = await _http.GetAsync(config.Input, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+            if (!res.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"Failed to download file. Status: {(int)res.StatusCode} {res.ReasonPhrase}");
+            }
+
+            await using var fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920, 
+                options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            await res.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
+
+            return tempPath;
         }
+        catch
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch
+            {
+                
+            }
 
-        await using var fs = new FileStream(
-            tempPath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 81920,
-            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-        await res.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
-
-        return tempPath;
+            throw;
+        }
     }
 
-    public static (int width, int height, double duration) GetVideoInfo(Config config)
+    public static (int width, int height, double duration) GetVideoInfo(TextyConfig config)
     {
         using var ffprobe = FFprobe.Create(config);
 
@@ -112,7 +138,7 @@ public static class TextyLoader
                 height = int.Parse(line.AsSpan(7));
 
             else if (line.StartsWith("duration="))
-                _ = double.TryParse(line.AsSpan(9), out duration);
+                _ = double.TryParse(line.AsSpan(9), NumberStyles.Float, CultureInfo.InvariantCulture, out duration);
         }
 
         if (width == 0 || height == 0)

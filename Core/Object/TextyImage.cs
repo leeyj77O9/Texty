@@ -11,18 +11,15 @@ namespace Texty.Core.Object;
 public class TextyImage : TextyObject
 {
     private readonly Image<Rgba32> image;
-    private readonly Config config;
+    private readonly TextyConfig config;
 
-    public TextyImage(Config config)
-    {
-        this.image = Image.Load<Rgba32>(TextyLoader.Load(config));
-        this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
-    }
-
-    public TextyImage(Image<Rgba32> image, Config config)
+    public TextyImage(Image<Rgba32> image, TextyConfig config)
     {
         this.image = image;
-        this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
+        if (config.Height < 1)
+            this.config = config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) };
+        else 
+            this.config = config;
     }
 
     public override string Texty() => Texty(TextyModeProvider.Get(config.Mode));
@@ -68,15 +65,47 @@ public class TextyImage : TextyObject
     public override async Task SaveAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(config.Output))
-            throw new ArgumentException("Output path is required. Please specify --output <path>");
+            throw new InvalidOperationException("Output path is required. Please specify --output <path>");
 
         var mode = TextyModeProvider.Get(config.Mode);
         var renderer = TextyRendererProvider.Get(config);
         var ctx = new RenderContext(image.Width, image.Height, config);
+        var ext = Path.GetExtension(config.Output).ToLowerInvariant();
 
         try
         {
             var pixels = await mode.TextyAsync(image, config, ct).ConfigureAwait(false);
+
+            if (ext.Equals(".txt"))
+            {
+                await using var stream = new FileStream(config.Output, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 64 * 1024, useAsync: true);
+                var buffer = new byte[64 * 1024];
+                int count = 0, index = 0, width = config.Width;
+
+                foreach (var pixel in pixels)
+                {
+                    var rune = config.Runes[pixel.Index];
+
+                    if (count > buffer.Length - 4)
+                    {
+                        await stream.WriteAsync(buffer.AsMemory(0, count), ct).ConfigureAwait(false);
+                        count = 0;
+                    }
+
+                    count += rune.EncodeToUtf8(buffer.AsSpan(count));
+
+                    if (++index == width)
+                    {
+                        buffer[count++] = (byte)'\n';
+                        index = 0;
+                    }
+                }
+
+                if (count > 0)
+                    await stream.WriteAsync(buffer.AsMemory(0, count), ct);
+                return;
+            }
+
             using var img = await renderer.RenderAsync(pixels, ctx, ct).ConfigureAwait(false);
 
             try
@@ -85,9 +114,11 @@ public class TextyImage : TextyObject
             }
             catch (UnknownImageFormatException)
             {
-                Console.WriteLine("Unsupported image format. Saving as PNG instead.");
+                var fallback = Path.ChangeExtension(config.Output, ".png");
 
-                await img.SaveAsPngAsync(Path.ChangeExtension(config.Output, ".png"), ct).ConfigureAwait(false);
+                Console.WriteLine($"Unsupported image format. Saving as PNG instead: {fallback}");
+
+                await img.SaveAsPngAsync(fallback, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -105,5 +136,17 @@ public class TextyImage : TextyObject
     {
         image.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    public static async Task<TextyImage> CreateAsync(TextyConfig config, CancellationToken ct = default)
+    {
+        var bytes = await TextyLoader.LoadAsync(config, ct);
+        using var stream = new MemoryStream(bytes);
+        var image = await Image.LoadAsync<Rgba32>(stream, ct).ConfigureAwait(false);
+
+        if (config.Height < 1)
+            return new TextyImage(image, config with { Height = (int)(image.Height * ((float)config.Width / image.Width)) });
+        else
+            return new TextyImage(image, config);
     }
 }

@@ -7,20 +7,12 @@ namespace Texty.Core.Mode;
 
 public class DetailMode : ITextyMode
 {
-    public TextyPixel[] Texty(Image<Rgba32> image, Config config)
+    public TextyPixel[] Texty(Image<Rgba32> image, TextyConfig config)
     {
         var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);
 
         var result = new TextyPixel[width * height];
-
-        int threshold = config.Quality switch
-        {
-            TextyQuality.Small => 60,
-            TextyQuality.Balanced => 40,
-            TextyQuality.Fast => 25,
-            _ => 30
-        };
 
         resized.ProcessPixelRows(accessor =>
         {
@@ -42,7 +34,7 @@ public class DetailMode : ITextyMode
 
                     int edge = Math.Max(Math.Abs(gray - grayR), Math.Abs(gray - grayD));
 
-                    int index = edge > threshold ? 0 : (gray * (config.CharSet.Length - 1)) >> 8;
+                    int index = edge > config.Threshold ? 0 : (gray * (config.CharSet.Length - 1)) >> 8;
 
                     result[pos + x] = new TextyPixel(p, (byte)index);
                 }

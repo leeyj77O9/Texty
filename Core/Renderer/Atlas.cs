@@ -15,7 +15,7 @@ public class Atlas
     public int CharWidth { get; private set; }
     public int CharHeight { get; private set; }
     public Font Font { get; private set; }
-    public Config Config { get; private set; }
+    public TextyConfig Config { get; private set; }
     public Dictionary<Rune, FontRectangle> CharBounds { get; private set; }
 
     private Rgba32[]? rgbas;
@@ -28,11 +28,13 @@ public class Atlas
         CharBounds = null!;
     }
 
-    public Atlas(Config config)
+    public Atlas(TextyConfig config)
     {
-        Font = SystemFonts.CreateFont(config.FontName, config.FontSize, config.FontStyle);
+        Font = config.Font;
         CharBounds = [];
         Config = config;
+        CharWidth = config.CharWidth;
+        CharHeight = config.CharHeight;
 
         Update();
     }
@@ -56,24 +58,10 @@ public class Atlas
         foreach (var c in Config.Runes)
             CharBounds[c] = TextMeasurer.MeasureBounds(c.ToString(), options);
 
-        double totalWidth = 0;
-        double maxHeight = 0;
-
-        foreach (char c in Config.SET)
-        {
-            var bounds = TextMeasurer.MeasureBounds(c.ToString(), options);
-
-            totalWidth += bounds.Width;
-            maxHeight = Math.Max(maxHeight, bounds.Height);
-        }
-
-        CharWidth = (int)Math.Ceiling(totalWidth / Config.SET.Length);
-        CharHeight = (int)Math.Ceiling(maxHeight);
-
         BuildAtlas();
     }
 
-    public bool IsUpdated(Config config)
+    public bool IsUpdated(TextyConfig config)
     {
         if (config.CharSet != Config.CharSet) return true;
         if (config.FontName != Font.Name) return true;

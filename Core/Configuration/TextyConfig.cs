@@ -5,20 +5,23 @@ using Texty.Core.Mode;
 
 namespace Texty.Core.Configuration;
 
-public record Config
+public record TextyConfig
 {
-    public static readonly Config Default = new();
+    public static readonly TextyConfig Default = new();
 
     public const int PIXELFORMAT = 4;
     public const string SET = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789@#S%?*+;:,.";
 
-    public double CharRatio { get; init; } = 0.637;
+    public int CharWidth { get; init; }
+    public int CharHeight { get; init; }
+    public double CharRatio { get; init; } = -1;
+    public int Threshold { get; init; } = 128;
 
     public string Input { get; init; } = string.Empty;
     public int Width { get; init; } = 100;    
+    public int Height { get; init; } = 0;
 
-    public int Height { get; init; }
-    public bool Invert { get; init; }
+    public bool Invert { get; init; } = false;
     public string CharSet { get; init; } = " .:=*M#@";
     public int Fps { get; init; } = 30;
     public Color BgColor { get; init; } = Color.White;
@@ -29,17 +32,18 @@ public record Config
     public float Saturation { get; init; } = 1f;
 
     public string? Output { get; init; }
-    public bool Loop { get; init; }
+    public bool Loop { get; init; } = false;
     public double Speed { get; init; } = 1.0;
-    public bool NoClear { get; init; }
-    public bool IsColor { get; init; }
+    public bool NoClear { get; init; } = false;
+    public bool IsColor { get; init; } = false;
 
     public int FontSize { get; init; } = 12;
     public string FontName { get; init; } = "Consolas";
     public Color FontColor { get; init; } = Color.Black;
     public FontStyle FontStyle { get; init; } = FontStyle.Regular;
+    public Font Font { get; init; }
 
-    public bool CopyToClipboard { get; init; }
+    public bool CopyToClipboard { get; init; } = false;
 
     public bool IsUrl => Uri.IsWellFormedUriString(Input, UriKind.Absolute);
     public string Extension => (IsUrl ? Path.GetExtension(new Uri(Input).AbsolutePath) : Path.GetExtension(Input)).ToLowerInvariant();
@@ -54,27 +58,56 @@ public record Config
     public string Codec { get; init; } = "libx264";
     public TextyQuality Quality { get; init; } = TextyQuality.Balanced;
 
-    public string? StartTime { get; init; } 
-    public string? Duration { get; init; } 
-    public string? EndTime { get; init; } 
+    public TimeSpan? StartTime { get; init; } = null;
+    public TimeSpan? Duration { get; init; } = null;
+    public TimeSpan? EndTime { get; init; } = null;
 
     public Rune[] Runes { get; init; }
 
-    private static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".jfif", ".webp"];
-    private static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm", ".gif"];
+    public static readonly HashSet<string> ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".jfif", ".webp"];
+    public static readonly HashSet<string> VideoExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm", ".gif"];
 
-    public Config() { Runes = []; } 
+    public TextyConfig() { Runes = []; Font = null!; } 
 
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(Input)) throw new ArgumentException("Input is required");
-        if (Width <= 0) throw new ArgumentException("Width must be > 0");
-        if (!IsImage && !IsVideo) throw new ArgumentException($"Unsupported file type: {Extension}");
+        if (string.IsNullOrWhiteSpace(Input)) 
+            throw new ArgumentException("Input is required");
+
+        if (Width <= 0) 
+            throw new ArgumentException("Width must be > 0");
+
+        if (!IsImage && !IsVideo) 
+            throw new ArgumentException($"Unsupported file type: {Extension}");
+
+        if (IsImage && Loop) 
+            throw new ArgumentException("Looping is not supported for images");
+
+        if (StartTime.HasValue && StartTime.Value < TimeSpan.Zero)
+            throw new ArgumentException("Start time cannot be negative.");
+
+        if (Duration.HasValue && Duration.Value < TimeSpan.Zero)
+            throw new ArgumentException("Duration cannot be negative.");
+
+        if (EndTime.HasValue && EndTime.Value < TimeSpan.Zero)
+            throw new ArgumentException("End time cannot be negative.");
+
+        if (Duration.HasValue && EndTime.HasValue)
+            throw new ArgumentException("--duration and --to cannot be used together.");
+
+        if (EndTime.HasValue)
+        {
+            var start = StartTime ?? TimeSpan.Zero;
+
+            if (EndTime <= start)
+                throw new ArgumentException(
+                    "--to must be greater than --start.");
+        }
     }
 
     public Size GetRenderSize() => new(Width, (int)(Height * CharRatio));
 
-    public static Config FromArgs(string[] args)
+    public static TextyConfig FromArgs(string[] args)
     {
         if (args.Length == 0)
             throw new ArgumentException("Input argument is required");
@@ -87,40 +120,44 @@ public record Config
         if (!File.Exists(input) && !Uri.IsWellFormedUriString(input, UriKind.Absolute))
             throw new ArgumentException($"Input file does not exist: {input}");
 
-        var width = 100;
-        var invert = false;
-        var charSet = " .:=*M#@";
-        var fps = 30;
-        var bgColor = Color.White;
+        var charRatio = Default.CharRatio;
+        var threshold = Default.Threshold;
 
-        var loop = false;
-        var speed = 1.0;
-        var noClear = false;
-        var color = false;
+        var width = Default.Width;
+        var height = Default.Height;
+        var invert = Default.Invert;
+        var charSet = Default.CharSet;
+        var fps = Default.Fps;
+        var bgColor = Default.BgColor;
 
-        var blur = 0.0f;
-        var contrast = 1.0f;
-        var brightness = 1.0f;
-        var saturation = 1.0f;
+        var loop = Default.Loop;
+        var speed = Default.Speed;
+        var noClear = Default.NoClear;
+        var color = Default.IsColor;
 
-        var fontSize = 12;
-        var fontName = "Consolas";
-        var fontColor = Color.Black;
-        var fontStyle = FontStyle.Regular;
+        var blur = Default.Blur;
+        var contrast = Default.Contrast;
+        var brightness = Default.Brightness;
+        var saturation = Default.Saturation;
 
-        var copyToClipboard = false;
+        var fontSize = Default.FontSize;
+        var fontName = Default.FontName;
+        var fontColor = Default.FontColor;
+        var fontStyle = Default.FontStyle;
 
-        var mode = TextyMode.Default;
+        var copyToClipboard = Default.CopyToClipboard;
 
-        var crf = 26;
-        var encodeSpeed = "veryfast";
-        var codec = "libx264";
-        var quality = TextyQuality.Fast;
+        var mode = Default.Mode;
 
-        string? output = null;
-        string? startTime = null;
-        string? duration = null;
-        string? endTime = null;
+        var crf = Default.Crf;
+        var encodeSpeed = Default.EncodeSpeed;
+        var codec = Default.Codec;
+        var quality = Default.Quality;
+
+        var output = Default.Output;
+        var startTime = Default.StartTime;
+        var duration = Default.Duration;
+        var endTime = Default.EndTime;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -141,6 +178,12 @@ public record Config
                         throw new ArgumentException($"Invalid width: {arg}");
                     break;
 
+                case "--height":
+                case "-h":
+                    if (!int.TryParse(NextValue(), out height))
+                        throw new ArgumentException($"Invalid height: {arg}");
+                    break;
+
                 case "--invert":
                 case "-i":
                     invert = true;
@@ -148,6 +191,29 @@ public record Config
 
                 case "--charset":
                     charSet = NextValue();
+                    break;
+
+                case "--charset-file":
+                    var charsetFile = NextValue();
+                    if (File.Exists(charsetFile))
+                        charSet = File.ReadAllText(charsetFile);
+                    else if (Uri.IsWellFormedUriString(charsetFile, UriKind.Absolute))
+                    {
+                        using var client = new HttpClient();
+                        charSet = client.GetStringAsync(charsetFile).Result;
+                    }
+                    else
+                        throw new ArgumentException($"Charset file does not exist: {charsetFile}");
+                    break;
+
+                case "--char-ratio":
+                    if (!double.TryParse(NextValue(), out charRatio))
+                        throw new ArgumentException($"Invalid char-ratio: {arg}");
+                    break;
+
+                case "--threshold":
+                    if (!int.TryParse(NextValue(), out threshold))
+                        throw new ArgumentException($"Invalid threshold: {arg}");
                     break;
 
                 case "--fps":
@@ -253,28 +319,59 @@ public record Config
 
                 case "--quality":
                 case "-q":
-                    if (!Enum.TryParse(NextValue(), true, out quality))
-                        throw new ArgumentException($"Invalid quality: {arg}");
-                    break;
+                    {
+                        var value = NextValue();
+
+                        if (!Enum.TryParse(value, true, out quality))
+                            throw new ArgumentException($"Invalid quality: {value}");
+
+                        (codec, crf, encodeSpeed) = quality switch
+                        {
+                            TextyQuality.UltraFast => ("libx264", 32, "ultrafast"),
+                            TextyQuality.Fast => ("libx264", 28, "veryfast"),
+                            TextyQuality.Balanced => ("libx264", 23, "fast"),
+                            TextyQuality.High => ("libx265", 22, "medium"),
+                            TextyQuality.VeryHigh => ("libx265", 20, "slow"),
+                            TextyQuality.Max => ("libx265", 18, "veryslow"),
+                            TextyQuality.Lossless => ("libx265", 0, "veryslow"),
+                            TextyQuality.Small => ("libx265", 28, "slow"),
+                            TextyQuality.VerySmall => ("libx265", 32, "veryslow"),
+
+                            _ => throw new ArgumentException($"Invalid quality: {value}")
+                        };
+
+                        break;
+                    }
 
                 case "--start":
                 case "-ss":
-                    startTime = NextValue();
+                    if (!TimeSpan.TryParse(NextValue(), out var st))
+                        throw new ArgumentException($"Invalid start time: {arg}");
+                    startTime = st;
                     break;
 
                 case "--duration":
                 case "-t":
-                    duration = NextValue();
+                    if (!TimeSpan.TryParse(NextValue(), out var du))
+                        throw new ArgumentException($"Invalid duration: {arg}");
+                    duration = du;  
                     break;
 
                 case "--to":
-                    endTime = NextValue();
+                    if (!TimeSpan.TryParse(NextValue(), out var et))
+                        throw new ArgumentException($"Invalid end time: {arg}");
+                    endTime = et;
                     break;
 
                 case "--mode":
                 case "-m":
                     if (!Enum.TryParse(NextValue(), true, out mode))
                         throw new ArgumentException($"Invalid mode: {arg}");
+                    charSet = mode switch
+                    {
+                        TextyMode.Shade => ShadeMode.CharSet,
+                        _ => charSet
+                    };
                     break;
 
                 default:
@@ -282,22 +379,21 @@ public record Config
             }
         }
 
-        
+        width = width % 2 == 0 ? width : width == 1 ? 2 : width - 1;
+        height = height % 2 == 0 ? height : height == 1 ? 2 : height - 1;        
 
-        width = width % 2 == 0 ? width : width - 1;
+        var font = SystemFonts.CreateFont(fontName, fontSize, fontStyle);
 
-        charSet = mode switch
-        { 
-            TextyMode.Shade => ShadeMode.CharSet,
-            _ => charSet
-        };
+        var (charWidth, charHeight, ratio) = GetCharInfo(font);
 
-        var charRatio = GetCharRatio(fontName, fontSize, fontStyle);
+        if (charRatio == -1)
+            charRatio = ratio;
 
-        var config = new Config
+        var config = new TextyConfig
         {
             Input = input,
             Width = width,
+            Height = height,
             Invert = invert,
             CharSet = charSet,
             Fps = fps,
@@ -315,6 +411,7 @@ public record Config
             FontName = fontName,
             FontColor = fontColor,
             FontStyle = fontStyle,
+            Font = font,
             CopyToClipboard = copyToClipboard,
             Mode = mode,
             Crf = crf,
@@ -325,99 +422,26 @@ public record Config
             Duration = duration,
             EndTime = endTime,
             Runes = [.. invert ? charSet.EnumerateRunes().Reverse() : charSet.EnumerateRunes()],
+            CharWidth = charWidth,
+            CharHeight = charHeight,
             CharRatio = charRatio,
+            Threshold = threshold,
         };
 
-        return ApplyQualitySettings(config);
+        return config;
     }
 
-    private static Config ApplyQualitySettings(Config config)
-    {
-        return config.Quality switch
-        {
-            TextyQuality.UltraFast => config with
-            {
-                Codec = "libx264",
-                Crf = 32,
-                EncodeSpeed = "ultrafast"
-            },
-
-            TextyQuality.Fast => config with
-            {
-                Codec = "libx264",
-                Crf = 28,
-                EncodeSpeed = "veryfast"
-            },
-
-            TextyQuality.Balanced => config with
-            {
-                Codec = "libx264",
-                Crf = 23,
-                EncodeSpeed = "fast"
-            },
-
-            TextyQuality.High => config with
-            {
-                Codec = "libx265",
-                Crf = 22,
-                EncodeSpeed = "medium"
-            },
-
-            TextyQuality.VeryHigh => config with
-            {
-                Codec = "libx265",
-                Crf = 20,
-                EncodeSpeed = "slow"
-            },
-
-            TextyQuality.Max => config with
-            {
-                Codec = "libx265",
-                Crf = 18,
-                EncodeSpeed = "veryslow"
-            },
-
-            TextyQuality.Lossless => config with
-            {
-                Codec = "libx265",
-                Crf = 0,
-                EncodeSpeed = "veryslow"
-            },
-
-            TextyQuality.Small => config with
-            {
-                Codec = "libx265",
-                Crf = 28,
-                EncodeSpeed = "slow"
-            },
-
-            TextyQuality.VerySmall => config with
-            {
-                Codec = "libx265",
-                Crf = 32,
-                EncodeSpeed = "veryslow"
-            },
-
-            _ => config
-        };
-    }
-
-    private static double GetCharRatio(string fontName, int fontSize, FontStyle fontStyle)
-    {
-        var font = SystemFonts.CreateFont(fontName, fontSize, fontStyle);
+    private static (int Width, int Height, double Ratio) GetCharInfo(Font font)
+    {    
         var options = new TextOptions(font);
 
-        double totalWidth = 0;
-        double maxHeight = 0;
+        var bounds = TextMeasurer.MeasureBounds(SET, options);
 
-        foreach (char c in SET)
-        {
-            var bound = TextMeasurer.MeasureBounds(c.ToString(), options);
+        var charWidth = (int)Math.Ceiling(bounds.Width / SET.Length);
+        var charHeight = (int)Math.Ceiling(bounds.Height);
 
-            totalWidth += bound.Width;
-            maxHeight = Math.Max(maxHeight, bound.Height);
-        }
+        var ratio = (double)charWidth / charHeight;
 
-        return Math.Ceiling(totalWidth / SET.Length) / Math.Ceiling(maxHeight);
+        return (charWidth, charHeight, ratio);
     }
 }

@@ -7,7 +7,7 @@ namespace Texty.Core.Mode;
 
 public class DefaultTextyMode : ITextyMode
 {
-    public TextyPixel[] Texty(Image<Rgba32> image, Config config)
+    public TextyPixel[] Texty(Image<Rgba32> image, TextyConfig config)
     {
         var (width, height) = config.GetRenderSize();
         using var resized = ITextyMode.Clone(image, width, height, config);

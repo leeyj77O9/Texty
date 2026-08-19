@@ -6,7 +6,7 @@ public abstract class TextyObject : IDisposable
 {
     public abstract string Texty();
 
-    public virtual Task<string> TextyAsync(CancellationToken cancellationToken = default) => Task.Run(() => Texty(), cancellationToken);
+    public virtual Task<string> TextyAsync(CancellationToken ct = default) => Task.Run(() => Texty(), ct);
 
     public abstract void Save();
 
@@ -14,9 +14,9 @@ public abstract class TextyObject : IDisposable
 
     public abstract void Dispose();
 
-    public static TextyObject FromConfig(Config config) => config.IsImage ? new TextyImage(config) : new TextyVideo(config);
+    public static TextyObject FromConfig(TextyConfig config) => config.IsImage ? TextyImage.CreateAsync(config).Result : TextyVideo.CreateAsync(config).Result;
 
-    public static TextyImage FromConfigToImage(Config config) => new(config);
+    public static TextyImage FromConfigToImage(TextyConfig config) => TextyImage.CreateAsync(config).Result;
 
-    public static TextyVideo FromConfigToVideo(Config config) => new(config);
+    public static TextyVideo FromConfigToVideo(TextyConfig config) => TextyVideo.CreateAsync(config).Result;
 }

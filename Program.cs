@@ -8,7 +8,8 @@ using Texty.Core.Object;
 if (HandleSpecialArgs(args))
     return;
 
-Config config = ParseArgs();
+TextyConfig config = ParseArgs();
+config.Validate();
 using var obj = TextyObject.FromConfig(config) ?? throw new InvalidOperationException("Failed to create object.");
 using var cts = new CancellationTokenSource();
 
@@ -17,7 +18,7 @@ if (config.Output != null)
 else if (config.CopyToClipboard)
     HandleCopyToClipboard(obj);
 else
-    await HandleRender(obj, cts.Token);
+    await HandleRender(obj, cts);
 
 bool HandleSpecialArgs(string[] args)
 {
@@ -31,7 +32,7 @@ bool HandleSpecialArgs(string[] args)
 
     foreach (var arg in args) 
     {
-        if (arg == "--help" || arg == "-h")
+        if (arg == "--help" || arg == "-?")
         {
             ShowHelp();
             return true;
@@ -47,11 +48,11 @@ bool HandleSpecialArgs(string[] args)
     return false;
 }
 
-Config ParseArgs()
+TextyConfig ParseArgs()
 {
     try
     {
-        return Config.FromArgs(args);
+        return TextyConfig.FromArgs(args);
     }
     catch (Exception ex)
     {
@@ -76,7 +77,10 @@ Arguments:
 
 Rendering Options:
   --width, -w <int>            Number of characters per line (default: 100)
+  --height, -h <int>           Number of lines (default: auto)
   --charset <string>           Characters used for rendering (default: " .:=*M#@")
+  --charset-file <path>        Path to a file containing characters for rendering
+  --char-ratio <float>         Character width-to-height ratio (default: auto)
   --invert, -i                 Invert brightness
 
 Video/Image Processing Options:
@@ -98,7 +102,7 @@ Video Options:
   --loop                       Loop playback (default: false)
   --speed <float>              Playback speed (default: 1.0)
   --start, -ss <time>          Start time (e.g. 00:00:05)
-  --to <time>                  End time 
+  --to <time>                  End time (e.g. 00:01:05)
   --duration, -t <time>        Duration
 
 Encoding Options:
@@ -118,12 +122,13 @@ Output Options:
   --no-clear                   Disable console clearing
   --copy, -c                   Copy first frame to clipboard
   --mode, -m <mode>            Rendering mode
+  --threshold <int>            Brightness threshold for rendering (default: 128)
 
 Color Options:
   --color                      Enable ANSI color output
 
 Other:
-  --help, -h                   Show help
+  --help, -?                   Show help
   --version, -v                Show version
 
 Examples:
@@ -146,19 +151,17 @@ void ShowVersion()
 
 void EnableAnsi()
 {
-    const int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;    
-
     if (!OperatingSystem.IsWindows())
         return;
+
+    const int ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;    
 
     try
     {
         var handle = GetStdHandle(-11);
 
         if (GetConsoleMode(handle, out int mode))
-        {
             SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-        }
     }
     catch
     {
@@ -202,23 +205,17 @@ void HandleCopyToClipboard(TextyObject obj)
     }
 }
 
-async Task HandleRender(TextyObject obj, CancellationToken ct = default)
+async Task HandleRender(TextyObject obj, CancellationTokenSource cts)
 {
     EnableAnsi();
     var sw = Stopwatch.StartNew();
 
     Console.OutputEncoding = Encoding.UTF8;
 
-    Console.CursorVisible = false;
-    Console.CancelKeyPress += (sender, e) =>
-    {
-        e.Cancel = true;
+    if (!Console.IsOutputRedirected)
+        Console.CursorVisible = false;
 
-        cts.Cancel();
-        obj.Dispose();
-        
-        Console.CursorVisible = true;
-    };
+    Console.CancelKeyPress += OnCancel;
 
     using var writer = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false), 1 << 20)
     {
@@ -245,30 +242,50 @@ async Task HandleRender(TextyObject obj, CancellationToken ct = default)
         var frameIndex = 0;
         var start = Stopwatch.GetTimestamp();
 
-        await foreach (string frame in video.WithCancellation(ct))
+        try
         {
-            if (!config.NoClear)
-                Console.SetCursorPosition(0, 0);
+            await foreach (string frame in video.WithCancellation(cts.Token))
+            {
+                if (!config.NoClear)
+                    writer.Write("\x1b[H");
 
-            writer.Write(frame);
-            writer.Flush();           
+                writer.Write(frame);
+                writer.Flush();
 
-            frameIndex++;
+                frameIndex++;
 
-            var targetTime = frameIndex * frameTime;
-            var elapsed = (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency;
-            var delay = targetTime - elapsed;
+                var targetTime = frameIndex * frameTime;
+                var elapsed = (Stopwatch.GetTimestamp() - start) * 1000d / Stopwatch.Frequency;
+                var delay = targetTime - elapsed;
 
-            if (delay > 2)
-                await Task.Delay((int)delay - 1, ct);
-            else if (delay > 0)
-                Thread.SpinWait(50);
+                if (delay > 2)
+                    await Task.Delay((int)delay - 1, cts.Token);
+                else if (delay > 0)
+                    Thread.SpinWait(50);
+            }
+        }
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+        {
+            writer.WriteLine("texty is cancelled.");
+        }
+        finally
+        {
+            if (!Console.IsOutputRedirected)
+                Console.CursorVisible = true;
+
+            Console.CancelKeyPress -= OnCancel;
+
+            sw.Stop();
+            writer.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
         }
 
-    } while (config.Loop);
+    } while (config.Loop && !cts.Token.IsCancellationRequested);
 
-    sw.Stop();
-    writer.WriteLine($"Time: {sw.Elapsed.TotalSeconds:F3}s ");
+    void OnCancel(object? sender, ConsoleCancelEventArgs e)
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    }
 }
 
 [DllImport("kernel32.dll", SetLastError = true)]
