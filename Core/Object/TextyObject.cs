@@ -19,4 +19,11 @@ public abstract class TextyObject : IDisposable
     public static TextyImage FromConfigToImage(TextyConfig config) => TextyImage.CreateAsync(config).Result;
 
     public static TextyVideo FromConfigToVideo(TextyConfig config) => TextyVideo.CreateAsync(config).Result;
+
+    public static async Task<TextyObject> FromConfigAsync(TextyConfig config) => 
+        config.IsImage ? await TextyImage.CreateAsync(config) : await TextyVideo.CreateAsync(config);
+
+    public static Task<TextyImage> FromConfigToImageAsync(TextyConfig config) => TextyImage.CreateAsync(config);
+
+    public static Task<TextyVideo> FromConfigToVideoAsync(TextyConfig config) => TextyVideo.CreateAsync(config);
 }
